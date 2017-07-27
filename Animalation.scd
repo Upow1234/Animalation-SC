@@ -1,16 +1,23 @@
 //need to provide better documentation for Parameter class
 
 //sample start and lenght relation so no crossing...
-//smooth edges to avoid pops (trigger an attack amp envelope type thing...)
 //add arc controls, arc matrix
 //led feedback (possibly consider a system where all grid buttons are converted to x + (y * width) and sorted by 0-32 being sample one controls 33-64 sample two etc.
 //figure out variable length of samples
 
-//add feature to being recording key presse with key press, also preselect playing
+//add feature to begin recording key presses with first key press, also preselect playing
 
 //maybe avoid camel case synth definition names?????? to avoid confusion with variables
 
-//envelope is always working, position is always going to beginning
+//do sample buffers really need to be stereo?
+
+//sample input is hard allocated to first and second inputs
+
+//how can play sample be created correctly before knowing how long the sample will be (could use set message)? how can an old sample continue playing while a new one is being recorded?
+
+//sample length = (~recordedSampleTime * s.sampleRate)
+
+//what the fuck is volumeAmpControl2?????
 
 (
 
@@ -26,6 +33,13 @@ s.waitForBoot({
 	~arc4.usePort(15503);
 
 	~count = -1;
+
+	~recordingIndicator = [0, 0, 0, 0];
+	~recordTimeBus = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
+	~recordedSampleTime = [0, 0, 0, 0];
+
+	~recording = [nil, nil, nil, nil];
+	~timer = [nil, nil, nil, nil];
 
 	~playbackIndicator = [0, 0, 0, 0];
 	~direction = [1, 1, 1, 1];
@@ -46,7 +60,7 @@ s.waitForBoot({
 
 	~popSynthVariable = [nil, nil, nil, nil];
 
-	~sample = [Buffer.alloc(s, s.sampleRate * 4.0, 2), Buffer.alloc(s, s.sampleRate * 4.0, 2), Buffer.alloc(s, s.sampleRate * 4.0, 2), Buffer.alloc(s, s.sampleRate * 4.0, 2), ];
+	~sample = [Buffer.alloc(s, s.sampleRate * 120.0, 2), Buffer.alloc(s, s.sampleRate * 120.0, 2), Buffer.alloc(s, s.sampleRate * 120.0, 2), Buffer.alloc(s, s.sampleRate * 120.0, 2), ];
 
 	~positionBuffer = [Buffer.alloc(s, s.sampleRate * 2.0, 1), Buffer.alloc(s, s.sampleRate * 2.0, 1), Buffer.alloc(s, s.sampleRate * 2.0, 1), Buffer.alloc(s, s.sampleRate * 2.0, 1)];
 
@@ -66,10 +80,19 @@ s.waitForBoot({
 	}).add;
 
 
-	SynthDef("playSample", {arg rate = 0, position = 0, direction = 1, start = 0, length = 1, fmSpeed = 1, fmDepth = 0, sample, popEnvInput = 1;
-		var bufrd;
-		//var trigger = Trig.kr(In.kr(position), 0.1); //trigger used to be the first argument for Phasor.ar
+	SynthDef("Recording Timer", {arg outputBus, trigger = 0;
 
+		Out.kr(outputBus, Sweep.kr(trigger, 1));
+
+	}).add;
+
+
+
+	SynthDef("playSample", {arg rate = 0, position = 0, direction = 1, start = 0, length = 1, fmSpeed = 1, fmDepth = 0, sample, popEnvInput = 1, sampleLength, sampleRate;
+		var bufrd, sampleLengthFrames;
+		sampleLengthFrames = sampleLength * sampleRate;
+
+		//could seperate this into variables to make it more readable
 		bufrd = BufRd.ar(2, sample, Phasor.ar(In.kr(position), (BufRateScale.kr(sample) * (rate * direction)) * SinOsc.kr(fmSpeed, 1.5pi, fmDepth, 1), BufFrames.kr(sample) * start, BufFrames.kr(sample) * (start + ((1 - start) * length)), BufFrames.kr(sample) * (In.kr(position) - 1)), 1, 2);
 		//position - 1 is so trigger can read a "0" position and still trigger
 
@@ -107,7 +130,7 @@ s.waitForBoot({
 
 	}).add;
 
-	SynthDef("playPosition", {arg outputBus, inputBuffer; //will have to be routed through pop filter
+	SynthDef("playPosition", {arg outputBus, inputBuffer; //will have to be routed through pop filter? I believe this works fine
 		var playingPosition = PlayBuf.kr(1, inputBuffer, 1, loop: 1, doneAction: Done.freeSelf);
 
 		Out.kr(outputBus, playingPosition);
@@ -239,20 +262,45 @@ s.waitForBoot({
 		});
 
 		if(messageOne == 15 && messageThree == 1, {
-			Synth.new("recordSample", [\sample, ~sample[sampleNumber]]);
 
-			postln("Recording Sample One!");
+			if(~recordingIndicator[sampleNumber] == 0, {
+
+				~recording[sampleNumber] = Synth.new("recordSample", [\sample, ~sample[sampleNumber]]);
+				~timer[sampleNumber] = Synth.after(~recording[sampleNumber], "Recording Timer", [\outputBus, ~recordTimeBus[sampleNumber], \trigger, 0]);
+
+				~recordingIndicator[sampleNumber] = 1;
+
+				postln("Recording Sample One!");
+			}, {
+				//playback synth is created in this function
+
+				~playback[sampleNumber].free;
+				~position[sampleNumber].free;
+				~popSynthVariable[sampleNumber].free;
+
+				~recordTimeBus[0].get({arg index; ~recordedSampleTime[0] = index; postln("Sample Length = " + index)});
+
+				~recording[sampleNumber].free;
+				~timer[sampleNumber].free;
+
+				~recordingIndicator[sampleNumber] = 0;
+
+				postln("Stopping Recording of Sample One!");
+
+				~playback[sampleNumber] = Synth("playSample", [\position, ~popBus[sampleNumber][1], \sample, ~sample[sampleNumber], \popEnvInput, ~popBus[sampleNumber][0], \sampleLength, ~recordedSampleTime[sampleNumber], \sampleRate, s.sampleRate]);
+
+				~position[sampleNumber] = Synth.before(~playback[sampleNumber], "positionBus", [\bus, ~positionBus[sampleNumber], \tempPosition, 0]);
+
+				~popSynthVariable[sampleNumber] = Synth.after(~position[sampleNumber], "Pop Stop Synth", [\outputAmplitudeBus, ~popBus[sampleNumber][0], \outputPositionBus, ~popBus[sampleNumber][1], \positionInBus, ~positionBus[sampleNumber], \trig, 0]);
+
+				postln("Creating Sample One Player!");
+
+			});
 		});
 
 		if(messageOne == 15 && messageThree == 0, {
 
-			~playback[sampleNumber] = Synth("playSample", [\position, ~popBus[sampleNumber][1], \sample, ~sample[sampleNumber], \popEnvInput, ~popBus[sampleNumber][0]]);
 
-			~position[sampleNumber] = Synth.before(~playback[sampleNumber], "positionBus", [\bus, ~positionBus[sampleNumber], \tempPosition, 0]);
-
-			~popSynthVariable[sampleNumber] = Synth.after(~position[sampleNumber], "Pop Stop Synth", [\outputAmplitudeBus, ~popBus[sampleNumber][0], \outputPositionBus, ~popBus[sampleNumber][1], \positionInBus, ~positionBus[sampleNumber], \trig, 0]);
-
-			postln("Creating Sample One Player!");
 		});
 
 		if(messageOne == 9 && messageThree == 1, {
@@ -378,7 +426,8 @@ s.waitForBoot({
 
 )
 
-
 s.reboot
 
 s.queryAllNodes
+
+
