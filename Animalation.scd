@@ -15,9 +15,11 @@
 
 //how can play sample be created correctly before knowing how long the sample will be (could use set message)? how can an old sample continue playing while a new one is being recorded?
 
-//sample length = (~recordedSampleTime * s.sampleRate)
-
 //what the fuck is volumeAmpControl2?????
+
+//figure out how to release memory from buffers when starting
+
+//could do part of set with short phasing syllables. Also nature sounds. birds. whales.
 
 (
 
@@ -36,7 +38,6 @@ s.waitForBoot({
 
 	~recordingIndicator = [0, 0, 0, 0];
 	~recordTimeBus = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
-	~recordedSampleTime = [0, 0, 0, 0];
 
 	~recording = [nil, nil, nil, nil];
 	~timer = [nil, nil, nil, nil];
@@ -87,14 +88,19 @@ s.waitForBoot({
 	}).add;
 
 
+	//currently starts automatically
+	SynthDef("playSample", {arg rate = 0, position = 0, direction = 1, start = 0, length = 1, fmSpeed = 1, fmDepth = 0, sample, popEnvInput = 1, sampleLength;
+		var bufrd, phasorDriver;
+		var sampleLengthFrames = sampleLength * BufSampleRate.kr(sample);
 
-	SynthDef("playSample", {arg rate = 0, position = 0, direction = 1, start = 0, length = 1, fmSpeed = 1, fmDepth = 0, sample, popEnvInput = 1, sampleLength, sampleRate;
-		var bufrd, sampleLengthFrames;
-		sampleLengthFrames = sampleLength * sampleRate;
+		//phasorDriver = Phasor.ar(In.kr(position), (BufRateScale.kr(sample) * (rate * direction)) * SinOsc.kr(fmSpeed, 1.5pi, fmDepth, 1), BufFrames.kr(sample) * start, BufFrames.kr(sample) * (start + ((1 - start) * length)), BufFrames.kr(sample) * (In.kr(position) - 1));
+
+		phasorDriver = Phasor.ar(In.kr(position), (rate * direction), (sampleLengthFrames * start), sampleLengthFrames * (start + ((1 - start) * length)), sampleLengthFrames * (In.kr(position) - 1));
 
 		//could seperate this into variables to make it more readable
-		bufrd = BufRd.ar(2, sample, Phasor.ar(In.kr(position), (BufRateScale.kr(sample) * (rate * direction)) * SinOsc.kr(fmSpeed, 1.5pi, fmDepth, 1), BufFrames.kr(sample) * start, BufFrames.kr(sample) * (start + ((1 - start) * length)), BufFrames.kr(sample) * (In.kr(position) - 1)), 1, 2);
+		bufrd = BufRd.ar(2, sample, phasorDriver, 1, 2);
 		//position - 1 is so trigger can read a "0" position and still trigger
+
 
 		Out.ar([0, 1], In.kr(popEnvInput) * bufrd);
 	}).add;
@@ -278,16 +284,25 @@ s.waitForBoot({
 				~position[sampleNumber].free;
 				~popSynthVariable[sampleNumber].free;
 
-				~recordTimeBus[0].get({arg index; ~recordedSampleTime[0] = index; postln("Sample Length = " + index)});
+				~recordTimeBus[sampleNumber].get({arg index;
+					var recordTime;
+
+					recordTime = index;
+					postln("Sample Length = " + recordTime);
+
+				~playback[sampleNumber] = Synth("playSample", [\sample, ~sample[sampleNumber], \sampleLength, recordTime, \popEnvInput, ~popBus[sampleNumber][0], \position, ~popBus[sampleNumber][1]]);
 
 				~recording[sampleNumber].free;
 				~timer[sampleNumber].free;
+
+				});
 
 				~recordingIndicator[sampleNumber] = 0;
 
 				postln("Stopping Recording of Sample One!");
 
-				~playback[sampleNumber] = Synth("playSample", [\position, ~popBus[sampleNumber][1], \sample, ~sample[sampleNumber], \popEnvInput, ~popBus[sampleNumber][0], \sampleLength, ~recordedSampleTime[sampleNumber], \sampleRate, s.sampleRate]);
+				//~playback[sampleNumber] = Synth("playSample", [\position, ~popBus[sampleNumber][1], \sample, ~sample[sampleNumber], \popEnvInput, ~popBus[sampleNumber][0], \sampleLength, ~recordedSampleTime[sampleNumber]]);
+
 
 				~position[sampleNumber] = Synth.before(~playback[sampleNumber], "positionBus", [\bus, ~positionBus[sampleNumber], \tempPosition, 0]);
 
@@ -323,9 +338,9 @@ s.waitForBoot({
 
 			if(~playbackIndicator[sampleNumber] == 1, {
 				~playback[sampleNumber].set(\rate, rates[messageOne]);
-				~storedRate[0] = rates[messageOne];
+				~storedRate[sampleNumber] = rates[messageOne];
 			}, {
-				~storedRate[0] = rates[messageOne]
+				~storedRate[sampleNumber] = rates[messageOne]
 			}
 			);
 
@@ -333,11 +348,11 @@ s.waitForBoot({
 		});
 
 		if(messageOne == 8 && messageThree == 1, {
-			~direction[0] = ~direction[0] * -1;
+			~direction[sampleNumber] = ~direction[sampleNumber] * -1;
 
-			~playback[sampleNumber].set(\direction, ~direction[0]);
+			~playback[sampleNumber].set(\direction, ~direction[sampleNumber]);
 
-			postln("Changing direction");
+			postln("Direction = " + ~direction[sampleNumber]);
 		});
 
 		if(messageOne == 13 && messageThree == 1, {
@@ -420,7 +435,7 @@ s.waitForBoot({
 
 	}, "/monome/enc/delta");
 
-	~pairs = [[Parameter("Sample One FM Depth", 0, 20, 100, 0, ~playbackOne, \fmDepth, 0), Parameter("Sample One FM Speed", 0, 500, 2, 0, ~playbackOne, \fmSpeed, 0)], [Parameter("Sample One Loop Start", 0, 1, 500, 0, ~playbackOne, \start, 0), Parameter("Sample One Loop End", 0, 1, 500, 1, ~playbackOne, \length, 0)]];
+	~pairs = [[Parameter("Sample One FM Depth", 0, 20, 100, 0, ~playback[0], \fmDepth, 0), Parameter("Sample One FM Speed", 0, 500, 2, 0, ~playback[0], \fmSpeed, 0)], [Parameter("Sample One Loop Start", 0, 1, 500, 0, ~playback[0], \start, 0), Parameter("Sample One Loop End", 0, 1, 500, 1, ~playback[0], \length, 0)]];
 
 });
 
@@ -431,3 +446,4 @@ s.reboot
 s.queryAllNodes
 
 
+{ ~recordedSampleTime[0] + 10 }.value
