@@ -3,9 +3,11 @@
 //sample start and lenght relation so no crossing...
 //add arc controls, arc matrix
 //led feedback (possibly consider a system where all grid buttons are converted to x + (y * width) and sorted by 0-32 being sample one controls 33-64 sample two etc.
-//figure out variable length of samples
+
 
 //add feature to begin recording key presses with first key press, also preselect playing
+//also add variable length trigger buffers
+
 
 //maybe avoid camel case synth definition names?????? to avoid confusion with variables
 
@@ -13,13 +15,14 @@
 
 //sample input is hard allocated to first and second inputs
 
-//how can play sample be created correctly before knowing how long the sample will be (could use set message)? how can an old sample continue playing while a new one is being recorded?
+//how can an old sample continue playing while a new one is being recorded?
 
 //what the fuck is volumeAmpControl2?????
 
 //figure out how to release memory from buffers when starting
 
 //could do part of set with short phasing syllables. Also nature sounds. birds. whales.
+
 
 (
 
@@ -37,7 +40,10 @@ s.waitForBoot({
 	~count = -1;
 
 	~recordingIndicator = [0, 0, 0, 0];
+
+	~recordingTriggerIndicator = [0, 0, 0, 0];
 	~recordTimeBus = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
+	~recordTriggerTime = [0, 0, 0, 0];
 
 	~recording = [nil, nil, nil, nil];
 	~timer = [nil, nil, nil, nil];
@@ -63,7 +69,7 @@ s.waitForBoot({
 
 	~sample = [Buffer.alloc(s, s.sampleRate * 120.0, 2), Buffer.alloc(s, s.sampleRate * 120.0, 2), Buffer.alloc(s, s.sampleRate * 120.0, 2), Buffer.alloc(s, s.sampleRate * 120.0, 2), ];
 
-	~positionBuffer = [Buffer.alloc(s, s.sampleRate * 2.0, 1), Buffer.alloc(s, s.sampleRate * 2.0, 1), Buffer.alloc(s, s.sampleRate * 2.0, 1), Buffer.alloc(s, s.sampleRate * 2.0, 1)];
+	~positionBuffer = [Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1)];
 
 	//~restartTriggerBus = [nil, nil, nil, nil];
 	~triggerPlaybackIndicator = [0, 0, 0, 0];
@@ -136,10 +142,14 @@ s.waitForBoot({
 
 	}).add;
 
-	SynthDef("playPosition", {arg outputBus, inputBuffer; //will have to be routed through pop filter? I believe this works fine
-		var playingPosition = PlayBuf.kr(1, inputBuffer, 1, loop: 1, doneAction: Done.freeSelf);
+	SynthDef("playPosition", {arg outputBus, inputBuffer, triggerRecordingLength = 0;
+		var sampleLength, bufrd;
+		//var playingPosition = PlayBuf.kr(1, inputBuffer, 1, loop: 1, doneAction: Done.freeSelf);
+		sampleLength = triggerRecordingLength * ControlRate.ir; //WHY DIDN"T ANYONE MENTION THIS
 
-		Out.kr(outputBus, playingPosition);
+		bufrd = BufRd.kr(1, inputBuffer, Phasor.kr(0, 1, 0, sampleLength, 0), 1, 2);
+
+		Out.kr(outputBus, bufrd);
 
 	}).add;
 
@@ -290,19 +300,16 @@ s.waitForBoot({
 					recordTime = index;
 					postln("Sample Length = " + recordTime);
 
-				~playback[sampleNumber] = Synth("playSample", [\sample, ~sample[sampleNumber], \sampleLength, recordTime, \popEnvInput, ~popBus[sampleNumber][0], \position, ~popBus[sampleNumber][1]]);
+					~playback[sampleNumber] = Synth("playSample", [\sample, ~sample[sampleNumber], \sampleLength, recordTime, \popEnvInput, ~popBus[sampleNumber][0], \position, ~popBus[sampleNumber][1]]);
 
-				~recording[sampleNumber].free;
-				~timer[sampleNumber].free;
+					~recording[sampleNumber].free;
+					~timer[sampleNumber].free;
 
 				});
 
 				~recordingIndicator[sampleNumber] = 0;
 
 				postln("Stopping Recording of Sample One!");
-
-				//~playback[sampleNumber] = Synth("playSample", [\position, ~popBus[sampleNumber][1], \sample, ~sample[sampleNumber], \popEnvInput, ~popBus[sampleNumber][0], \sampleLength, ~recordedSampleTime[sampleNumber]]);
-
 
 				~position[sampleNumber] = Synth.before(~playback[sampleNumber], "positionBus", [\bus, ~positionBus[sampleNumber], \tempPosition, 0]);
 
@@ -357,16 +364,40 @@ s.waitForBoot({
 
 		if(messageOne == 13 && messageThree == 1, {
 
-			~recordPosition[sampleNumber] = Synth.after(~position[sampleNumber], "recordPosition", [\inputBus, ~positionBus[sampleNumber], \recordingBuffer, ~positionBuffer[sampleNumber]]);
+			if(~recordingTriggerIndicator[sampleNumber] == 0, {
 
-			postln("Recording Key Presses");
+				~recordPosition[sampleNumber] = Synth.after(~position[sampleNumber], "recordPosition", [\inputBus, ~positionBus[sampleNumber], \recordingBuffer, ~positionBuffer[sampleNumber]]);
+
+				~timer[sampleNumber] = Synth.after(~recordPosition[sampleNumber], "Recording Timer", [\outputBus, ~recordTimeBus[sampleNumber], \trigger, 0]);
+
+				~recordingTriggerIndicator[sampleNumber] = 1;
+
+				postln("Recording Key Presses on Sample " + sampleNumber);
+
+			}, {
+
+				~recordTimeBus[sampleNumber].get({arg index;
+
+					~recordTriggerTime[sampleNumber] = index;
+					postln("Trigger Recording Length = " + ~recordTriggerTime[sampleNumber]);
+
+					~recordPosition[sampleNumber].free;
+					~timer[sampleNumber].free;
+
+				});
+
+				~recordingTriggerIndicator[sampleNumber] = 0;
+
+				postln("Stopping Recording of Sample " + sampleNumber + " triggers");
+
+			});
 		});
 
 		if(messageOne == 14 && messageThree == 1, {
 
 			if(~triggerPlaybackIndicator[sampleNumber] == 0, {
 
-				~playPosition[sampleNumber] = Synth.after(~position[sampleNumber], "playPosition", [\outputBus, ~positionBus[sampleNumber], \inputBuffer, ~positionBuffer[sampleNumber]]);
+				~playPosition[sampleNumber] = Synth.after(~position[sampleNumber], "playPosition", [\outputBus, ~positionBus[sampleNumber], \inputBuffer, ~positionBuffer[sampleNumber], \triggerRecordingLength, ~recordTriggerTime[sampleNumber]]);
 
 
 				~triggerPlaybackIndicator[sampleNumber] = 1;
@@ -446,4 +477,4 @@ s.reboot
 s.queryAllNodes
 
 
-{ ~recordedSampleTime[0] + 10 }.value
+{ ~recordTriggerTime[0] }.value
