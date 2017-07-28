@@ -218,44 +218,42 @@ s.waitForBoot({
 	~controlRow = {arg sampleNumber, messageOne, messageTwo, messageThree;
 
 		var rates = [0.25, 0.375, 0.5, 0.75, 1, 1.5, 2, 2.5];
+		var matrixIndexes = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]];
 
 		//arc matrix is 10-12
 		if((messageOne == 12) || (messageOne == 11) || (messageOne == 10), {
+			var messageOneOffset = messageOne - 10;
 
 			if (messageThree == 1, {
 
-				if(~matrixOneHeld[0] == 0,{
-					~matrixOneHeld[0] = 1;
-					~matrixOneHeld[1] = messageOne;
+				switch(~matrixOneHeld[0], 0,{
+					~matrixOneHeld[0] = 1; //one means true or is held
+					~matrixOneHeld[1] = matrixIndexes[sampleNumber][messageOneOffset];
 
-					postln("Holding One");
-				});
-
-				if(~matrixOneHeld[0] == 1 && ~matrixOneHeld[1] != messageOne, {
+					postln("Holding One with Index " + ~matrixOneHeld[1]);
+				}, 1, {
 					~matrixTwoPressed[0] = 1;
-					~matrixTwoPressed[1] = messageOne;
+					~matrixTwoPressed[1] = matrixIndexes[sampleNumber][messageOneOffset];
 
-					postln("Holding Two");
+					postln("Holding Two with Index " + ~matrixTwoPressed[1]);
 				});
 
 			});
 
 			if(messageThree == 0, {
 
-				if(~matrixOneHeld[0] == 1 && ~matrixOneHeld[1] == messageOne, {
+				if(~matrixOneHeld[0] == 1 && ~matrixOneHeld[1] == matrixIndexes[sampleNumber][messageOneOffset], {
 
 					~matrixOneHeld[0] = 0;
-					~matrixOneHeld[1] = 0;
 
-					postln("Releasing One");
+					postln("Releasing One with Index " + ~matrixOneHeld[1]);
 				});
 
-				if(~matrixTwoPressed[0] == 1 && ~matrixTwoPressed[1] == messageOne, {
+				if(~matrixTwoPressed[0] == 1 && ~matrixTwoPressed[1] == matrixIndexes[sampleNumber][messageOneOffset], {
 
 					~matrixTwoPressed[0] = 0;
-					~matrixTwoPressed[1] = 0;
 
-					postln("Releasing Two");
+					postln("Releasing Two with Index" + ~matrixTwoPressed[1]);
 				});
 
 			});
