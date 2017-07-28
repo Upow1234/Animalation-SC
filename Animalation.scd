@@ -5,9 +5,6 @@
 //led feedback (possibly consider a system where all grid buttons are converted to x + (y * width) and sorted by 0-32 being sample one controls 33-64 sample two etc.
 
 
-//add feature to begin recording key presses with first key press, also preselect playing
-//also add variable length trigger buffers
-
 
 //maybe avoid camel case synth definition names?????? to avoid confusion with variables
 
@@ -22,6 +19,8 @@
 //figure out how to release memory from buffers when starting
 
 //could do part of set with short phasing syllables. Also nature sounds. birds. whales.
+
+//clearer variable names, clean up by using switches where appropriate
 
 
 (
@@ -367,17 +366,15 @@ s.waitForBoot({
 
 		if(messageOne == 13 && messageThree == 1, {
 
-			if(~recordingTriggerIndicator[sampleNumber] == 0, {
+			if(~recordTriggerSet[sampleNumber] == 0, {
 
-				~recordPosition[sampleNumber] = Synth.after(~position[sampleNumber], "recordPosition", [\inputBus, ~positionBus[sampleNumber], \recordingBuffer, ~positionBuffer[sampleNumber]]);
+				~recordTriggerSet[sampleNumber] = 1;
 
-				~timer[sampleNumber] = Synth.after(~recordPosition[sampleNumber], "Recording Timer", [\outputBus, ~recordTimeBus[sampleNumber], \trigger, 0]);
+				post("Record Trigger Set!!!");
 
-				~recordingTriggerIndicator[sampleNumber] = 1;
+			});
 
-				postln("Recording Key Presses on Sample " + sampleNumber);
-
-			}, {
+			if(~recordingTriggerIndicator[sampleNumber] == 1, {
 
 				~recordTimeBus[sampleNumber].get({arg index;
 
@@ -392,10 +389,10 @@ s.waitForBoot({
 						~playPosition[sampleNumber] = Synth.after(~position[sampleNumber], "playPosition", [\outputBus, ~positionBus[sampleNumber], \inputBuffer, ~positionBuffer[sampleNumber], \triggerRecordingLength, ~recordTriggerTime[sampleNumber]]);
 
 
-					~triggerPlaybackIndicator[sampleNumber] = 1;
-					~playTriggerSet[sampleNumber] = 0;
+						~triggerPlaybackIndicator[sampleNumber] = 1;
+						~playTriggerSet[sampleNumber] = 0;
 
-					postln("Playing Key Presses from Pre-Select");
+						postln("Playing Key Presses from Pre-Select");
 
 					});
 
@@ -403,9 +400,15 @@ s.waitForBoot({
 
 				~recordingTriggerIndicator[sampleNumber] = 0;
 
+				~recordTriggerSet[sampleNumber] = 0;
+
 				postln("Stopping Recording of Sample " + sampleNumber + " triggers");
 
 			});
+
+			////////////////////////////////////////////////////////////////////////
+
+			////////////////////////////////////////////////////////////////////////
 		});
 
 		if(messageOne == 14 && messageThree == 1, {
@@ -448,17 +451,49 @@ s.waitForBoot({
 
 		var positions = [(sixteenth * 0) + 1, (sixteenth * 1) + 1, (sixteenth * 2) + 1, (sixteenth * 3) + 1, (sixteenth * 4) + 1, (sixteenth * 5) + 1, (sixteenth * 6) + 1, (sixteenth * 7) + 1, (sixteenth * 8) + 1, (sixteenth * 9) + 1, (sixteenth * 10) + 1, (sixteenth * 11) + 1, (sixteenth * 12) + 1, (sixteenth * 13) + 1, (sixteenth * 14) + 1, (sixteenth * 15) + 1];  //plus one is to get around 0 positon not triggering trig in sample play
 
-		if(messageThree == 1, {
+		switch(~recordTriggerSet[sampleNumber], 0, {
 
-			~position[sampleNumber].set(\tempPosition, positions[messageOne]);
+			if(messageThree == 1, {
 
-			postln("Sample One Position = " + positions[messageOne]);
-		});
+				~position[sampleNumber].set(\tempPosition, positions[messageOne]);
 
-		if(messageThree == 0, {
-			~position[sampleNumber].set(\tempPosition, 0);
+				postln("Sample One Position = " + positions[messageOne]);
+			});
 
-			postln("Sample One Position = 0");
+			if(messageThree == 0, {
+				~position[sampleNumber].set(\tempPosition, 0);
+
+				postln("Sample One Position = 0");
+			});
+
+		}, 1, {
+			/////////////////////////////////////////
+			if(~recordingTriggerIndicator[sampleNumber] == 0, {
+
+				~recordPosition[sampleNumber] = Synth.after(~position[sampleNumber], "recordPosition", [\inputBus, ~positionBus[sampleNumber], \recordingBuffer, ~positionBuffer[sampleNumber]]);
+
+				~timer[sampleNumber] = Synth.after(~recordPosition[sampleNumber], "Recording Timer", [\outputBus, ~recordTimeBus[sampleNumber], \trigger, 0]);
+
+				~recordingTriggerIndicator[sampleNumber] = 1;
+
+				postln("Recording Key Presses on Sample " + sampleNumber);
+
+			});
+			//////////////////////////////////
+
+			if(messageThree == 1, {
+
+				~position[sampleNumber].set(\tempPosition, positions[messageOne]);
+
+				postln("Sample One Position = " + positions[messageOne]);
+			});
+
+			if(messageThree == 0, {
+				~position[sampleNumber].set(\tempPosition, 0);
+
+				postln("Sample One Position = 0");
+			});
+
 		});
 
 	};
