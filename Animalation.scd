@@ -23,6 +23,7 @@
 //make sure to eliminate all "FAILURE IN SERVER" errors
 //can't record a sample more than once
 
+//should I add recording pitch changes?
 
 (
 
@@ -193,56 +194,22 @@ s.waitForBoot({
 
 			~grid128.ledset(message[1], message[2], message[3]);
 
-			//control rows
-
-			if(message[2] == 0, {
-
+			switch(message[2], 0, { //control rows
 				~controlRow.value(0, message[1], message[2], message[3]);
-
-			});
-
-			if(message[2] == 2, {
-
+			}, 2, {
 				~controlRow.value(1, message[1], message[2], message[3]);
-
-			});
-
-			if(message[2] == 4, {
-
+			}, 4, {
 				~controlRow.value(2, message[1], message[2], message[3]);
-
-			});
-
-			if(message[2] == 6, {
-
+			}, 6, {
 				~controlRow.value(3, message[1], message[2], message[3]);
-
-			});
-
-			//play rows
-
-			if(message[2] == 1, {
-
+			}, 1, { //play rows
 				~playRow.value(0, message[1], message[2], message[3]);
-
-			});
-
-			if(message[2] == 3, {
-
+			}, 3, {
 				~playRow.value(1, message[1], message[2], message[3]);
-
-			});
-
-			if(message[2] == 5, {
-
+			}, 5, {
 				~playRow.value(2, message[1], message[2], message[3]);
-
-			});
-
-			if(message[2] == 7, {
-
+			}, 7, {
 				~playRow.value(3, message[1], message[2], message[3]);
-
 			});
 
 	}, "/monome/grid/key");
@@ -304,7 +271,7 @@ s.waitForBoot({
 
 				~recordingStatusIndicator[sampleNumber] = 1;
 
-				postln("Recording Sample One!");
+				postln("Recording Sample " + sampleNumber);
 			}, {
 				//playback synth is created in this function
 
@@ -316,7 +283,7 @@ s.waitForBoot({
 					var recordTime;
 
 					recordTime = index;
-					postln("Sample Length = " + recordTime);
+					postln("Sample " + sampleNumber + " Length = " + recordTime);
 
 					~playbackSynth[sampleNumber] = Synth("Sample_Playback_Synth", [\sample, ~sampleSynth[sampleNumber], \sampleLength, recordTime, \popEnvInput, ~clickStopBus[sampleNumber][0], \position, ~clickStopBus[sampleNumber][1]]);
 
@@ -327,21 +294,17 @@ s.waitForBoot({
 
 				~recordingStatusIndicator[sampleNumber] = 0;
 
-				postln("Stopping Recording of Sample One!");
+				postln("Stopping Recording of Sample " + sampleNumber);
 
 				~positionSynth[sampleNumber] = Synth.before(~playbackSynth[sampleNumber], "Position_Signal_Generator_Synth", [\bus, ~positionBus[sampleNumber], \tempPosition, 0]);
 
 				~clickStopSynth[sampleNumber] = Synth.after(~positionSynth[sampleNumber], "Click_Stop_Synth", [\outputAmplitudeBus, ~clickStopBus[sampleNumber][0], \outputPositionBus, ~clickStopBus[sampleNumber][1], \positionInBus, ~positionBus[sampleNumber], \trig, 0]);
 
-				postln("Creating Sample One Player!");
+				//postln("Creating Sample " + sampleNumber + " Playback Synth");
 
 			});
 		});
 
-		if(messageOne == 15 && messageThree == 0, {
-
-
-		});
 
 		if(messageOne == 9 && messageThree == 1, {
 
@@ -356,7 +319,7 @@ s.waitForBoot({
 				~playbackStatusIndicator[sampleNumber] = 1;
 			});
 
-			postln("Playing Sample One");
+			postln("Playing Sample " + sampleNumber);
 		});
 
 		if(((messageOne >= 0) && (messageOne <= 7)) && messageThree == 1, {
@@ -369,7 +332,7 @@ s.waitForBoot({
 			}
 			);
 
-			postln("Sample One Rate = " + rates[messageOne]);
+			postln("Sample " + sampleNumber + " Rate = " + rates[messageOne]);
 		});
 
 		if(messageOne == 8 && messageThree == 1, {
@@ -377,7 +340,7 @@ s.waitForBoot({
 
 			~playbackSynth[sampleNumber].set(\direction, ~samplePlaybackDirection[sampleNumber]);
 
-			postln("Direction = " + ~samplePlaybackDirection[sampleNumber]);
+			postln("Direction on Track " + sampleNumber + " = " + ~samplePlaybackDirection[sampleNumber]);
 		});
 
 		if(messageOne == 13 && messageThree == 1, {
@@ -386,7 +349,7 @@ s.waitForBoot({
 
 				~recordPositionPreSet[sampleNumber] = 1;
 
-				post("Record Trigger Set!!!");
+				postln("Record Position Pre-Set on Track " + sampleNumber);
 
 			});
 
@@ -395,7 +358,7 @@ s.waitForBoot({
 				~recordTimeBus[sampleNumber].get({arg index;
 
 					~recordPositionLengthTimer[sampleNumber] = index;
-					postln("Trigger Recording Length = " + ~recordPositionLengthTimer[sampleNumber]);
+					postln("Position Recording Length = " + ~recordPositionLengthTimer[sampleNumber] + " on Track " + sampleNumber);
 
 					~recordPositionSynth[sampleNumber].free;
 					~recordingLengthTimer[sampleNumber].free;
@@ -408,7 +371,7 @@ s.waitForBoot({
 						~playPositionStatusIndicator[sampleNumber] = 1;
 						~playPositionPreSet[sampleNumber] = 0;
 
-						postln("Playing Key Presses from Pre-Select");
+						postln("Playing Key Presses from a Pre-Set state on Track " + sampleNumber);
 
 					});
 
@@ -418,13 +381,10 @@ s.waitForBoot({
 
 				~recordPositionPreSet[sampleNumber] = 0;
 
-				postln("Stopping Recording of Sample " + sampleNumber + " triggers");
+				postln("Stopping Recording of Sample " + sampleNumber + " position");
 
 			});
 
-			////////////////////////////////////////////////////////////////////////
-
-			////////////////////////////////////////////////////////////////////////
 		});
 
 		if(messageOne == 14 && messageThree == 1, {
@@ -437,24 +397,24 @@ s.waitForBoot({
 
 
 					~playPositionStatusIndicator[sampleNumber] = 1;
-					~playPositionPreSet[sampleNumber] = 0; //added [sampleNumber without checking in VIM
+					~playPositionPreSet[sampleNumber] = 0;
 
-					postln("Playing Key Presses");
+					postln("Playing Position Recording on Track" + sampleNumber);
 				});
 
 				if(~recordPostionStatusIndicator[sampleNumber] == 1, {
 
 					~playPositionPreSet[sampleNumber] = 1;
 
-					postln("Key Press Playing READY!");
+					postln("Position Playback Pre-Set on Track" + sampleNumber);
 
 				});
-			}, 1, { //second case for switch
+			}, 1, {
 
 				~playPositionSynth[sampleNumber].free;
 				~playPositionStatusIndicator[sampleNumber] = 0;
 
-				postln("Stopping Key Presses");
+				postln("Stopping Position Playback on Track " + sampleNumber);
 			});
 
 		});
@@ -473,17 +433,17 @@ s.waitForBoot({
 
 				~positionSynth[sampleNumber].set(\tempPosition, positions[messageOne]);
 
-				postln("Sample One Position = " + positions[messageOne]);
+				postln("Sample " + sampleNumber + " Position = " + positions[messageOne]);
 			});
 
 			if(messageThree == 0, {
 				~positionSynth[sampleNumber].set(\tempPosition, 0);
 
-				postln("Sample One Position = 0");
+				postln("Position Released on Sample" + sampleNumber);
 			});
 
 		}, 1, {
-			/////////////////////////////////////////
+
 			if(~recordPostionStatusIndicator[sampleNumber] == 0, {
 
 				~recordPositionSynth[sampleNumber] = Synth.after(~positionSynth[sampleNumber], "Position_Record_Synth", [\inputBus, ~positionBus[sampleNumber], \recordingBuffer, ~positionRecordingBuffer[sampleNumber]]);
@@ -495,19 +455,18 @@ s.waitForBoot({
 				postln("Recording Key Presses on Sample " + sampleNumber);
 
 			});
-			//////////////////////////////////
 
 			if(messageThree == 1, {
 
 				~positionSynth[sampleNumber].set(\tempPosition, positions[messageOne]);
 
-				postln("Sample One Position = " + positions[messageOne]);
+				postln("Sample " + sampleNumber + " Position = " + positions[messageOne]);
 			});
 
 			if(messageThree == 0, {
 				~positionSynth[sampleNumber].set(\tempPosition, 0);
 
-				postln("Sample One Position = 0");
+				postln("Position Released on Sample" + sampleNumber);
 			});
 
 		});
