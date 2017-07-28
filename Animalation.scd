@@ -45,6 +45,9 @@ s.waitForBoot({
 	~recordTimeBus = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
 	~recordTriggerTime = [0, 0, 0, 0];
 
+	~recordTriggerSet = [0, 0, 0, 0];
+	~playTriggerSet = [0, 0, 0, 0];
+
 	~recording = [nil, nil, nil, nil];
 	~timer = [nil, nil, nil, nil];
 
@@ -384,6 +387,18 @@ s.waitForBoot({
 					~recordPosition[sampleNumber].free;
 					~timer[sampleNumber].free;
 
+					if(~playTriggerSet[sampleNumber] == 1, {
+
+						~playPosition[sampleNumber] = Synth.after(~position[sampleNumber], "playPosition", [\outputBus, ~positionBus[sampleNumber], \inputBuffer, ~positionBuffer[sampleNumber], \triggerRecordingLength, ~recordTriggerTime[sampleNumber]]);
+
+
+					~triggerPlaybackIndicator[sampleNumber] = 1;
+					~playTriggerSet[sampleNumber] = 0;
+
+					postln("Playing Key Presses from Pre-Select");
+
+					});
+
 				});
 
 				~recordingTriggerIndicator[sampleNumber] = 0;
@@ -395,15 +410,28 @@ s.waitForBoot({
 
 		if(messageOne == 14 && messageThree == 1, {
 
-			if(~triggerPlaybackIndicator[sampleNumber] == 0, {
+			switch(~triggerPlaybackIndicator[sampleNumber], 0, {
 
-				~playPosition[sampleNumber] = Synth.after(~position[sampleNumber], "playPosition", [\outputBus, ~positionBus[sampleNumber], \inputBuffer, ~positionBuffer[sampleNumber], \triggerRecordingLength, ~recordTriggerTime[sampleNumber]]);
+				if(~recordingTriggerIndicator[sampleNumber] == 0, {
+
+					~playPosition[sampleNumber] = Synth.after(~position[sampleNumber], "playPosition", [\outputBus, ~positionBus[sampleNumber], \inputBuffer, ~positionBuffer[sampleNumber], \triggerRecordingLength, ~recordTriggerTime[sampleNumber]]);
 
 
-				~triggerPlaybackIndicator[sampleNumber] = 1;
+					~triggerPlaybackIndicator[sampleNumber] = 1;
+					~playTriggerSet = 0;
 
-				postln("Playing Key Presses");
-			}, {
+					postln("Playing Key Presses");
+				});
+
+				if(~recordingTriggerIndicator[sampleNumber] == 1, {
+
+					~playTriggerSet[sampleNumber] = 1;
+
+					postln("Key Press Playing READY!");
+
+				});
+			}, 1, { //second case for switch
+
 				~playPosition[sampleNumber].free;
 				~triggerPlaybackIndicator[sampleNumber] = 0;
 
