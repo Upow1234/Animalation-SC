@@ -1,38 +1,25 @@
-//need to provide better documentation for Parameter class
-//could also add a table to provide more change for a higher speed
-
-//sample start and lenght relation so no crossing...
-//add arc controls, arc matrix
-
-//led feedback
-//can there be an led flashing function to show different states? (pre set)
-//could put grid update things in a function...no need to have it written over and over
-//inconsistencies with updating rate leds
-
-//do sample buffers really need to be stereo?
-
-//sample input is hard allocated to first and second inputs
-
-//how can an old sample continue playing while a new one is being recorded? could rework to use BufWr with a loop and stored phasor position
-
-//what the fuck is volumeAmpControl2?????
-
-//figure out how to release memory from buffers when starting
-
+//***************LONG-TERM***************\\
 //could do part of set with short phasing syllables. Also nature sounds. birds. whales.
-
-//clearer variable names, clean up by using switches where appropriate
-
 //would it be possible to offer a version for grid 128 and no arc???
 
-//make sure to eliminate all "FAILURE IN SERVER" errors
-//can't record a sample more than once
+//clearly show how to change different options, specifically changing inputs and outputs
+//indicate volume is low for headroom
 
 //should I add recording pitch changes?
 
-//check all arguments in SynthDefs are still in use
 
-//add message for stopping sample playback
+
+//need to provide better documentation for Parameter class
+
+//redo length formula so it's the same length unless it goes over the end
+
+//how can an old sample continue playing while a new one is being recorded? could rework to use BufWr with a loop and stored phasor position
+
+//reduce maximum amplitude to allow for high resonances and four samples playing
+
+//...there really needs to be a volume control. press both currently held parameters plus...some third thing? or how about just holding those two things?
+//can't currently disable recording preset without hitting a position knob...
+
 
 (
 
@@ -43,13 +30,78 @@ s = Server.local;
 
 Buffer.freeAll; //essential or buffers start piling up in RAM
 
+SynthDef.new("Sample_Recording_Synth", {arg sample;
+	var sampleInput;
+
+	sampleInput = SoundIn.ar(0);
+	RecordBuf.ar(sampleInput, sample, loop: 0, doneAction: Done.freeSelf);
+
+}).add;
+
+SynthDef("Sample_Length_Timer_Synth", {arg outputBus, trigger = 0;
+
+	Out.kr(outputBus, Sweep.kr(trigger, 1));
+
+}).add;
+
+SynthDef("Sample_Playback_Synth", {arg rate = 0, position = 0, direction = 1, start = 0, length = 1, fmSpeed = 1, fmDepth = 0, sample, popEnvInput = 1, sampleLength, cutoff = 20000, resonance = 1, ledPhasorOutput;
+
+	var bufrd, phasorDriver;
+	var sampleLengthFrames = sampleLength * BufSampleRate.kr(sample);
+
+	var fm = SinOsc.kr(fmSpeed, 0, fmDepth);
+
+	phasorDriver = Phasor.ar(In.kr(position), ((rate * SinOsc.ar(fmSpeed, 0, fmDepth, 1))* direction), (sampleLengthFrames * start), sampleLengthFrames * (start + ((1 - start) * length)), sampleLengthFrames * (In.kr(position) - 1)); //position - 1 is so trigger can read a "0" position and still trigger
+
+
+	bufrd = BufRd.ar(2, sample, phasorDriver, 1, 2);
+
+	Out.ar([0, 1], In.kr(popEnvInput) * RLPF.ar(bufrd, cutoff, resonance));
+
+	Out.kr(ledPhasorOutput, LinLin.kr(phasorDriver, start * sampleLengthFrames, sampleLengthFrames * (start + ((1 - start) * length)), 0, 16));
+
+}).add;
+
+SynthDef("Click_Stop_Synth", {arg outputAmplitudeBus, outputPositionBus, positionInBus;
+
+	var ampShape = Env.new([0.05, 0, 0, 0.05], [SampleDur.ir, SampleDur.ir * 2, SampleDur.ir]);
+
+	Out.kr(outputAmplitudeBus, EnvGen.kr(ampShape, gate: In.kr(positionInBus)));
+	Out.kr(outputPositionBus, Delay2.kr(In.kr(positionInBus)));
+
+}).add;
+
+SynthDef("Position_Signal_Generator_Synth", {arg bus, tempPosition = 0;
+	var positionSignal = SinOsc.kr(mul: 0, add: tempPosition); //constant signal generator
+
+	Out.kr(bus, positionSignal);
+
+}).add;
+
+SynthDef("Position_Record_Synth", {arg inputBus, recordingBuffer;
+	var recordInput;
+
+	recordInput = In.kr(inputBus);
+
+	RecordBuf.kr(recordInput, recordingBuffer, loop: 0, doneAction: Done.freeSelf);
+
+}).add;
+
+SynthDef("Position_Playback_Synth", {arg outputBus, inputBuffer, triggerRecordingLength = 0;
+	var sampleLength, bufrd;
+	sampleLength = triggerRecordingLength * ControlRate.ir; //WHY DIDN"T ANYONE MENTION THIS
+
+	bufrd = BufRd.kr(1, inputBuffer, Phasor.kr(0, 1, 0, sampleLength, 0), 1, 2);
+
+	Out.kr(outputBus, bufrd);
+
+}).add;
+
 
 s.waitForBoot({
 
 	~grid128.usePort(15497);
 	~arc4.usePort(15503);
-
-	~count = -1;
 
 	//variables for recording samples
 	~recordingSynth = [nil, nil, nil, nil];
@@ -58,8 +110,10 @@ s.waitForBoot({
 	~recordTimeBus = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
 	~recordingLengthTimer = [nil, nil, nil, nil];
 
+	~recordingLength = [1, 1, 1, 1];
+
 	//variables for playing samples back
-	~sampleSynth = [Buffer.alloc(s, s.sampleRate * 120.0, 2), Buffer.alloc(s, s.sampleRate * 120.0, 2), Buffer.alloc(s, s.sampleRate * 120.0, 2), Buffer.alloc(s, s.sampleRate * 120.0, 2), ];
+	~sampleSynth = [Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), ]; //sets maximum sample time to two minutes (120.0 seconds)
 
 	~playbackSynth = [nil, nil, nil, nil];
 	~playbackStatusIndicator = [0, 0, 0, 0];
@@ -70,7 +124,7 @@ s.waitForBoot({
 	~storedPlaybackRate = [1, 1, 1, 1];
 
 	//variables for position manipulation
-	~positionRecordingBuffer = [Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1)];
+	~positionRecordingBuffer = [Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1)]; //sets maximum position trigger recording time to two minutes (120.0 seconds)
 
 	~positionSynth = [nil, nil, nil, nil];
 
@@ -95,8 +149,6 @@ s.waitForBoot({
 
 	~playPositionStatusIndicator = [0, 0, 0, 0];
 
-
-
 	//variables for arc parameters
 	~loopStartPosition = [0, 0, 0, 0];
 	~loopEndPosition = [1, 1, 1, 1];
@@ -110,115 +162,32 @@ s.waitForBoot({
 
 	~controlRowLedDefaultValues = [7, 3, 7, 3, 7, 3, 7, 3, 0, 3, 0, 0, 0, 3, 0, 3];
 
+	//play row led variables
+	~playRowLedBus = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
+	~currentPlayLed = [-1, -1, -1, -1]; //set to negative one so first position will be 0
 
-	SynthDef.new("Sample_Recording_Synth", {arg sample;
-		var sampleInput;
-
-		sampleInput = SoundIn.ar([0, 1]);
-		RecordBuf.ar(sampleInput, sample, loop: 0, doneAction: Done.freeSelf);
-
-	}).add;
-
-
-	SynthDef("Sample_Length_Timer_Synth", {arg outputBus, trigger = 0;
-
-		Out.kr(outputBus, Sweep.kr(trigger, 1));
-
-	}).add;
-
-
-	//currently starts automatically
-	SynthDef("Sample_Playback_Synth", {arg rate = 0, position = 0, direction = 1, start = 0, length = 1, fmSpeed = 1, fmDepth = 0, sample, popEnvInput = 1, sampleLength, cutoff = 20000, resonance = 1;
-		var bufrd, phasorDriver;
-		var sampleLengthFrames = sampleLength * BufSampleRate.kr(sample);
-
-		var fm = SinOsc.kr(fmSpeed, 0, fmDepth);
-
-		phasorDriver = Phasor.ar(In.kr(position), (rate * direction), (sampleLengthFrames * start), sampleLengthFrames * (start + ((1 - start) * length)), sampleLengthFrames * (In.kr(position) - 1)); //position - 1 is so trigger can read a "0" position and still trigger
-
-		bufrd = BufRd.ar(2, sample, phasorDriver, 1, 2);
-
-		Out.ar([0, 1], In.kr(popEnvInput) * RLPF.ar(bufrd, cutoff, resonance));
-	}).add;
-
-
-
-	SynthDef("Click_Stop_Synth", {arg outputAmplitudeBus, outputPositionBus, positionInBus; //should be created after "Position_Signal_Generator_Synth"
-
-		var ampShape = Env.new([1, 0, 0, 1], [SampleDur.ir, SampleDur.ir * 2, SampleDur.ir]);
-
-		Out.kr(outputAmplitudeBus, EnvGen.kr(ampShape, gate: In.kr(positionInBus)));
-		Out.kr(outputPositionBus, Delay2.kr(In.kr(positionInBus)));
-
-	}).add;
-
-
-
-	SynthDef("Position_Signal_Generator_Synth", {arg bus, tempPosition = 0; //should output to Click_Stop_Synth
-		var positionSignal = SinOsc.kr(mul: 0, add: tempPosition); //constant signal generator
-
-		Out.kr(bus, positionSignal);
-
-	}).add;
-
-	//this buffer is recording longer than it is allocated to do so
-	//also it won't free when done...because it seems to record indefinitly
-	SynthDef("Position_Record_Synth", {arg inputBus, recordingBuffer;
-		var recordInput;
-
-		recordInput = In.kr(inputBus);
-
-		RecordBuf.kr(recordInput, recordingBuffer, loop: 0, doneAction: Done.freeSelf);
-
-	}).add;
-
-	SynthDef("Position_Playback_Synth", {arg outputBus, inputBuffer, triggerRecordingLength = 0;
-		var sampleLength, bufrd;
-		//var playingPosition = PlayBuf.kr(1, inputBuffer, 1, loop: 1, doneAction: Done.freeSelf);
-		sampleLength = triggerRecordingLength * ControlRate.ir; //WHY DIDN"T ANYONE MENTION THIS
-
-		bufrd = BufRd.kr(1, inputBuffer, Phasor.kr(0, 1, 0, sampleLength, 0), 1, 2);
-
-		Out.kr(outputBus, bufrd);
-
-	}).add;
-
-
-	~clockDriver = Task({
-		var interval = 0.25;
-
-		loop {
-			~count = (~count + 1) % 16;
-			//postln(~count);
-
-			interval.yield;
-		}
-
-	});
-
-	~clockDriver.play;
 
 	OSCFunc.newMatching(
 		{ arg message, time, addr, recvPort;
-			//message 1 = x axis (rows 0-15) message 2 = y axis (columns 0-7)
+			//message 1 = x axis (columns 0-15) message 2 = y axis (rows 0-7)
 
-			switch(message[2], 0, { //control rows
-				~controlRow.value(0, message[1], message[2], message[3]);
-			}, 2, {
-				~controlRow.value(1, message[1], message[2], message[3]);
-			}, 4, {
-				~controlRow.value(2, message[1], message[2], message[3]);
-			}, 6, {
-				~controlRow.value(3, message[1], message[2], message[3]);
-			}, 1, { //play rows
-				~playRow.value(0, message[1], message[2], message[3]);
-			}, 3, {
-				~playRow.value(1, message[1], message[2], message[3]);
-			}, 5, {
-				~playRow.value(2, message[1], message[2], message[3]);
-			}, 7, {
-				~playRow.value(3, message[1], message[2], message[3]);
-			});
+				switch(message[2], 0, { //control rows
+					~controlRow.value(0, message[1], message[2], message[3]);
+				}, 2, {
+					~controlRow.value(1, message[1], message[2], message[3]);
+				}, 4, {
+					~controlRow.value(2, message[1], message[2], message[3]);
+				}, 6, {
+					~controlRow.value(3, message[1], message[2], message[3]);
+				}, 1, { //play rows
+					~playRow.value(0, message[1], message[2], message[3]);
+				}, 3, {
+					~playRow.value(1, message[1], message[2], message[3]);
+				}, 5, {
+					~playRow.value(2, message[1], message[2], message[3]);
+				}, 7, {
+					~playRow.value(3, message[1], message[2], message[3]);
+				});
 
 	}, "/monome/grid/key");
 
@@ -234,19 +203,48 @@ s.waitForBoot({
 		if((messageOne == 12) || (messageOne == 11) || (messageOne == 10), {
 			var messageOneOffset = messageOne - 10;
 
+			var matrixLedLocations = [[10, 0], [11, 0], [12, 0], [10, 2], [11, 2], [12, 2], [10, 4], [11, 4], [12, 4], [10, 6], [11, 6], [12, 6]];
+
 			if (messageThree == 1, {
 
 				switch(~arcSelectionLeft[0], 0,{
+
+					if(matrixIndexes[sampleNumber][messageOneOffset] == ~arcSelectionRight[1], { //if you try to select slot one where slot two already is
+
+						~arcSelectionRight[1] = matrixIndexes[sampleNumber][(messageOneOffset + 1) % 3];
+
+					});
+
 					~arcSelectionLeft[0] = 1; //one means true or is held
 					~arcSelectionLeft[1] = matrixIndexes[sampleNumber][messageOneOffset];
 
-					postln("Holding One with Index " + ~arcSelectionLeft[1]);
+					~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue);
+					~updateArcLeds.value(1, ~pairs[~arcSelectionLeft[1]][1].arcLedValue);
+
+					postln("Holding Selection Left with Index " + ~arcSelectionLeft[1]);
 				}, 1, {
+
 					~arcSelectionRight[0] = 1;
 					~arcSelectionRight[1] = matrixIndexes[sampleNumber][messageOneOffset];
 
-					postln("Holding Two with Index " + ~arcSelectionRight[1]);
+					~updateArcLeds.value(2, ~pairs[~arcSelectionRight[1]][0].arcLedValue);
+					~updateArcLeds.value(3, ~pairs[~arcSelectionRight[1]][1].arcLedValue);
+
+					postln("Holding Selection Right with Index " + ~arcSelectionRight[1]);
 				});
+
+				for(10, 12, {arg x; //clear and reset arc selection matrix leds
+					forBy(0, 6, 2, {arg y;
+
+						~gridLeds[x + (y * 16)] = 0;
+
+					});
+				});
+
+				//masked x + (y * width)
+				~gridLeds[matrixLedLocations[~arcSelectionLeft[1]][0] + (matrixLedLocations[~arcSelectionLeft[1]][1] * 16)] = 15;
+				~gridLeds[matrixLedLocations[~arcSelectionRight[1]][0] + (matrixLedLocations[~arcSelectionRight[1]][1] * 16)] = 7;
+				~updateGridLeds.value;
 
 			});
 
@@ -256,14 +254,14 @@ s.waitForBoot({
 
 					~arcSelectionLeft[0] = 0;
 
-					postln("Releasing One with Index " + ~arcSelectionLeft[1]);
+					postln("Releasing Selection Left with Index " + ~arcSelectionLeft[1]);
 				});
 
 				if(~arcSelectionRight[0] == 1 && ~arcSelectionRight[1] == matrixIndexes[sampleNumber][messageOneOffset], {
 
 					~arcSelectionRight[0] = 0;
 
-					postln("Releasing Two with Index" + ~arcSelectionRight[1]);
+					postln("Releasing Selection Right with Index" + ~arcSelectionRight[1]);
 				});
 
 			});
@@ -286,20 +284,15 @@ s.waitForBoot({
 			}, {
 				//playback synth is created in this function
 
-				~playbackSynth[sampleNumber].free;
-				~positionSynth[sampleNumber].free;
-				~clickStopSynth[sampleNumber].free;
-
 				~recordTimeBus[sampleNumber].get({arg index;
-					var recordTime;
 
-					recordTime = index;
-					postln("Sample " + sampleNumber + " Length = " + recordTime);
-
-					~playbackSynth[sampleNumber] = Synth("Sample_Playback_Synth", [\sample, ~sampleSynth[sampleNumber], \sampleLength, recordTime, \popEnvInput, ~clickStopBus[sampleNumber][0], \position, ~clickStopBus[sampleNumber][1]]);
+					~recordingLength = index;
+					postln("Sample " + sampleNumber + " Length = " + index);
 
 					~recordingSynth[sampleNumber].free;
 					~recordingLengthTimer[sampleNumber].free;
+
+					~playbackSynth[sampleNumber].set(\sampleLength, index);
 
 				});
 
@@ -309,12 +302,6 @@ s.waitForBoot({
 				~updateGridLeds.value;
 
 				postln("Stopping Recording of Sample " + sampleNumber);
-
-				~positionSynth[sampleNumber] = Synth.before(~playbackSynth[sampleNumber], "Position_Signal_Generator_Synth", [\bus, ~positionBus[sampleNumber], \tempPosition, 0]);
-
-				~clickStopSynth[sampleNumber] = Synth.after(~positionSynth[sampleNumber], "Click_Stop_Synth", [\outputAmplitudeBus, ~clickStopBus[sampleNumber][0], \outputPositionBus, ~clickStopBus[sampleNumber][1], \positionInBus, ~positionBus[sampleNumber], \trig, 0]);
-
-				//postln("Creating Sample " + sampleNumber + " Playback Synth");
 
 			});
 		});
@@ -356,7 +343,7 @@ s.waitForBoot({
 			}
 			);
 
-			for(0, 8, {arg i;
+			for(0, 7, {arg i;
 				~gridLeds[i + (ledOffsets[sampleNumber] * 16)] = ~controlRowLedDefaultValues[i];
 
 			});
@@ -393,6 +380,9 @@ s.waitForBoot({
 
 				~recordPositionPreSet[sampleNumber] = 1;
 
+				~gridLeds[13 + (ledOffsets[sampleNumber] * 16)] = 15;
+				~updateGridLeds.value;
+
 				postln("Record Position Pre-Set on Track " + sampleNumber);
 
 			});
@@ -425,6 +415,9 @@ s.waitForBoot({
 
 				~recordPositionPreSet[sampleNumber] = 0;
 
+				~gridLeds[13 + (ledOffsets[sampleNumber] * 16)] = 0;
+				~updateGridLeds.value;
+
 				postln("Stopping Recording of Sample " + sampleNumber + " position");
 
 			});
@@ -443,12 +436,18 @@ s.waitForBoot({
 					~playPositionStatusIndicator[sampleNumber] = 1;
 					~playPositionPreSet[sampleNumber] = 0;
 
+					~gridLeds[14 + (ledOffsets[sampleNumber] * 16)] = 15;
+					~updateGridLeds.value;
+
 					postln("Playing Position Recording on Track" + sampleNumber);
 				});
 
 				if(~recordPostionStatusIndicator[sampleNumber] == 1, {
 
 					~playPositionPreSet[sampleNumber] = 1;
+
+					~gridLeds[14 + (ledOffsets[sampleNumber] * 16)] = 15;
+					~updateGridLeds.value;
 
 					postln("Position Playback Pre-Set on Track" + sampleNumber);
 
@@ -457,6 +456,9 @@ s.waitForBoot({
 
 				~playPositionSynth[sampleNumber].free;
 				~playPositionStatusIndicator[sampleNumber] = 0;
+
+				~gridLeds[14 + (ledOffsets[sampleNumber] * 16)] = 0;
+				~updateGridLeds.value;
 
 				postln("Stopping Position Playback on Track " + sampleNumber);
 			});
@@ -469,7 +471,7 @@ s.waitForBoot({
 
 		var sixteenth = 1 / 16;
 
-		var positions = [(sixteenth * 0) + 1, (sixteenth * 1) + 1, (sixteenth * 2) + 1, (sixteenth * 3) + 1, (sixteenth * 4) + 1, (sixteenth * 5) + 1, (sixteenth * 6) + 1, (sixteenth * 7) + 1, (sixteenth * 8) + 1, (sixteenth * 9) + 1, (sixteenth * 10) + 1, (sixteenth * 11) + 1, (sixteenth * 12) + 1, (sixteenth * 13) + 1, (sixteenth * 14) + 1, (sixteenth * 15) + 1];  //plus one is to get around 0 positon not triggering trig in sample play
+		var positions = [(sixteenth * 0) + 1, (sixteenth * 1) + 1, (sixteenth * 2) + 1, (sixteenth * 3) + 1, (sixteenth * 4) + 1, (sixteenth * 5) + 1, (sixteenth * 6) + 1, (sixteenth * 7) + 1, (sixteenth * 8) + 1, (sixteenth * 9) + 1, (sixteenth * 10) + 1, (sixteenth * 11) + 1, (sixteenth * 12) + 1, (sixteenth * 13) + 1, (sixteenth * 14) + 1, (sixteenth * 15) + 1];  //plus one is to get around 0 positon not causing retrigger in sample playback
 
 		switch(~recordPositionPreSet[sampleNumber], 0, {
 
@@ -520,42 +522,56 @@ s.waitForBoot({
 	OSCFunc.newMatching(
 		{ arg message, time, addr, recvPort;
 
-			if(message[1] == 0, {
+			var arcFunctions = {arg name, messageOne, messageTwo;
+				name.change(messageTwo);
+				name.sendChange;
+				~updateArcLeds.value(messageOne, name.arcLedValue);
+			};
 
-				~pairs[~arcSelectionLeft[1]][0].change(message[2]);
-				~pairs[~arcSelectionLeft[1]][0].sendChange;
-			});
+			switch(message[1], 0, {
 
-			if(message[1] == 1, {
+				arcFunctions.value(~pairs[~arcSelectionLeft[1]][0], 0, message[2]);
 
-				~pairs[~arcSelectionLeft[1]][1].change(message[2]);
-				~pairs[~arcSelectionLeft[1]][1].sendChange;
-			});
+			}, 1, {
 
-			if(message[1] == 2, {
+				arcFunctions.value(~pairs[~arcSelectionLeft[1]][1], 1, message[2]);
 
-				~pairs[~arcSelectionRight[1]][0].change(message[2]);
-				~pairs[~arcSelectionRight[1]][0].sendChange;
-			});
+			}, 2, {
 
-			if(message[1] == 3, {
+				arcFunctions.value(~pairs[~arcSelectionRight[1]][0], 2, message[2]);
 
-				~pairs[~arcSelectionRight[1]][1].change(message[2]);
-				~pairs[~arcSelectionRight[1]][1].sendChange;
+			}, 3, {
+
+				arcFunctions.value(~pairs[~arcSelectionRight[1]][1], 3, message[2]);
+
 			});
 
 
 	}, "/monome/enc/delta");
 
+	//create playback synths
+
+	for(0, 3, {arg sampleNumber;
+
+		~playbackSynth[sampleNumber] = Synth("Sample_Playback_Synth", [\sample, ~sampleSynth[sampleNumber], \sampleLength, ~recordingLength, \popEnvInput, ~clickStopBus[sampleNumber][0], \position, ~clickStopBus[sampleNumber][1], \ledPhasorOutput, ~playRowLedBus[sampleNumber]]);
+
+		~positionSynth[sampleNumber] = Synth.before(~playbackSynth[sampleNumber], "Position_Signal_Generator_Synth", [\bus, ~positionBus[sampleNumber], \tempPosition, 0]);
+
+		~clickStopSynth[sampleNumber] = Synth.after(~positionSynth[sampleNumber], "Click_Stop_Synth", [\outputAmplitudeBus, ~clickStopBus[sampleNumber][0], \outputPositionBus, ~clickStopBus[sampleNumber][1], \positionInBus, ~positionBus[sampleNumber], \trig, 0]);
+
+	});
+
+	postln("Creating Sample Playback Synths 0 - 3");
+
 	~pairs = [
 
-		[Parameter.new("Sample One Cutoff", 0, 20000, 1, 500, ~playbackSynth[0], \cutoff, 0), Parameter.new("Sample One Resonance", 0.01, 1, 100, 1, ~playbackSynth[0], \resonance, 0)], [Parameter.new("Sample One FM Depth", 0, 20, 100, 0, ~playbackSynth[0], \fmDepth, 0), Parameter.new("Sample One FM Speed", 0, 500, 2, 0, ~playbackSynth[0], \fmSpeed, 0)], [Parameter.new("Sample One Loop Start", 0, 1, 500, 0, ~playbackSynth[0], \start, 0), Parameter.new("Sample One Loop End", 0, 1, 500, 1, ~playbackSynth[0], \length, 0)],
+		[Parameter.new("Sample Zero Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[0], \cutoff, 0), Parameter.new("Sample Zero Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[0], \resonance, 0)], [Parameter.new("Sample Zero FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[0], \fmSpeed, 0), Parameter.new("Sample Zero FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[0], \fmDepth, 0)], [Parameter.new("Sample ZeroOne Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[0], \start, 0), Parameter.new("Sample Zero Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[0], \length, 0)],
 
-		[Parameter.new("Sample Two Cutoff", 0, 20000, 1, 500, ~playbackSynth[1], \cutoff, 0), Parameter.new("Sample Two Resonance", 0.01, 1, 100, 1, ~playbackSynth[1], \resonance, 0)], [Parameter.new("Sample Two FM Depth", 0, 20, 100, 0, ~playbackSynth[1], \fmDepth, 0), Parameter.new("Sample Two FM Speed", 0, 500, 2, 0, ~playbackSynth[1], \fmSpeed, 0)], [Parameter.new("Sample Two Loop Start", 0, 1, 500, 0, ~playbackSynth[1], \start, 0), Parameter.new("Sample Two Loop End", 0, 1, 500, 1, ~playbackSynth[1], \length, 0)],
+		[Parameter.new("Sample One Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[1], \cutoff, 0), Parameter.new("Sample One Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[1], \resonance, 0)], [Parameter.new("Sample One FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[1], \fmSpeed, 0), Parameter.new("Sample One FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[1], \fmDepth, 0)], [Parameter.new("Sample One Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[1], \start, 0), Parameter.new("Sample One Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[1], \length, 0)],
 
-		[Parameter.new("Sample Three Cutoff", 0, 20000, 1, 500, ~playbackSynth[2], \cutoff, 0), Parameter.new("Sample Three Resonance", 0.01, 1, 100, 1, ~playbackSynth[2], \resonance, 0)], [Parameter.new("Sample Three FM Depth", 0, 20, 100, 0, ~playbackSynth[2], \fmDepth, 0), Parameter.new("Sample Three FM Speed", 0, 500, 2, 0, ~playbackSynth[2], \fmSpeed, 0)], [Parameter.new("Sample Three Loop Start", 0, 1, 500, 0, ~playbackSynth[2], \start, 0), Parameter.new("Sample Three Loop End", 0, 1, 500, 1, ~playbackSynth[2], \length, 0)],
+		[Parameter.new("Sample Two Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[2], \cutoff, 0), Parameter.new("Sample Two Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[2], \resonance, 0)], [Parameter.new("Sample Two FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[2], \fmSpeed, 0), Parameter.new("Sample Two FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[2], \fmDepth, 0)], [Parameter.new("Sample Two Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[2], \start, 0), Parameter.new("Sample Two Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[2], \length, 0)],
 
-		[Parameter.new("Sample Four Cutoff", 0, 20000, 1, 500, ~playbackSynth[3], \cutoff, 0), Parameter.new("Sample Four Resonance", 0.01, 1, 100, 1, ~playbackSynth[3], \resonance, 0)], [Parameter.new("Sample Four FM Depth", 0, 20, 100, 0, ~playbackSynth[3], \fmDepth, 0), Parameter.new("Sample Four FM Speed", 0, 500, 2, 0, ~playbackSynth[3], \fmSpeed, 0)], [Parameter.new("Sample Four Loop Start", 0, 1, 500, 0, ~playbackSynth[3], \start, 0), Parameter.new("Sample Four Loop End", 0, 1, 500, 1, ~playbackSynth[3], \length, 0)],
+		[Parameter.new("Sample Three Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[3], \cutoff, 0), Parameter.new("Sample Three Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[3], \resonance, 0)], [Parameter.new("Sample Three FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[3], \fmSpeed, 0), Parameter.new("Sample Three FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[3], \fmDepth, 0)], [Parameter.new("Sample Three Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[3], \start, 0), Parameter.new("Sample Three Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[3], \length, 0)],
 
 	];
 
@@ -588,9 +604,53 @@ s.waitForBoot({
 
 	};
 
-	~updateArcLeds = {
+	~updateArcLeds = {arg encoderNumber, ledValue;
+
+		var encoderTemporaryArray = Array.fill(64, { arg index;
+			if(index <= ledValue, { 15 }, { 0 });
+		});
+
+		~arc4.ringmap(encoderNumber, encoderTemporaryArray);
 
 	};
+
+
+	//monitor for play row leds
+	~clockDriver = Task({
+		var interval = 0.01;
+		var playRows = [1, 3, 5, 7];
+
+		loop {
+
+			for(0, 3, {arg i;
+
+				~playRowLedBus[i].get({ arg value;
+
+					if(value.asInteger != ~currentPlayLed[i], {
+						~currentPlayLed[i] = value.asInteger;
+
+						for(0, 15, {arg x;
+
+							~gridLeds[x + (playRows[i] * 16)] = 1;
+
+						});
+
+						~gridLeds[value.asInteger + (playRows[i] * 16)] = 15;
+
+						~updateGridLeds.value;
+
+					});
+
+				});
+
+			});
+
+			interval.yield;
+		}
+
+	});
+
+	~clockDriver.play;
 
 	//initialize control row leds
 
@@ -600,24 +660,24 @@ s.waitForBoot({
 			~grid128.levset(x, y, ~controlRowLedDefaultValues[x]);
 			~gridLeds[x + (y * 16)] = ~controlRowLedDefaultValues[x];
 
-
-
 		});
+
 		//initialize rate led to speed 1 (column 4)
 		~grid128.levset(4, y, 15);
 		~gridLeds[4 + (y * 16)] = 15;
 
 	});
 
+	~gridLeds[10 + (0 * 16)] = 15;
+	~gridLeds[11 + (0 * 16)] = 7;
 
+	//initialize arc leds
+
+	~updateArcLeds.value(0, ~pairs[0][0].arcLedValue);
+	~updateArcLeds.value(1, ~pairs[0][1].arcLedValue);
+	~updateArcLeds.value(2, ~pairs[1][0].arcLedValue);
+	~updateArcLeds.value(3, ~pairs[1][1].arcLedValue);
 
 });
 
 )
-
-~updateGridLeds.value;
-~grid128.levall(0);
-
-s.reboot
-
-s.queryAllNodes
