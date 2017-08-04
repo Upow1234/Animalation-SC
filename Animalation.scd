@@ -7,15 +7,13 @@
 
 //should I add recording pitch changes?
 
+//re insert lower volume
 
-
-//need to provide better documentation for Parameter class
+//need to provide better documentation for ArcParameter class
 
 //redo length formula so it's the same length unless it goes over the end
 
 //how can an old sample continue playing while a new one is being recorded? could rework to use BufWr with a loop and stored phasor position
-
-//reduce maximum amplitude to allow for high resonances and four samples playing
 
 //...there really needs to be a volume control. press both currently held parameters plus...some third thing? or how about just holding those two things?
 //can't currently disable recording preset without hitting a position knob...
@@ -64,17 +62,20 @@ SynthDef("Sample_Playback_Synth", {arg rate = 0, position = 0, direction = 1, st
 
 SynthDef("Click_Stop_Synth", {arg outputAmplitudeBus, outputPositionBus, positionInBus;
 
-	var ampShape = Env.new([0.05, 0, 0, 0.05], [SampleDur.ir, SampleDur.ir * 2, SampleDur.ir]);
+	var ampShape = Env.new([1, 0, 0, 1], [SampleDur.ir, SampleDur.ir * 2, SampleDur.ir]);
 
 	Out.kr(outputAmplitudeBus, EnvGen.kr(ampShape, gate: In.kr(positionInBus)));
 	Out.kr(outputPositionBus, Delay2.kr(In.kr(positionInBus)));
 
 }).add;
 
-SynthDef("Position_Signal_Generator_Synth", {arg bus, tempPosition = 0;
-	var positionSignal = SinOsc.kr(mul: 0, add: tempPosition); //constant signal generator
+SynthDef("Position_Signal_Generator_Synth", {arg bus, tempPosition = 0, tempRate, tempReverse;
+	var positionSignal = SinOsc.kr(mul: 0, add: tempPosition); //constant signal generators
+	var rateSignal = SinOsc.kr(mul: 0, add: tempRate);
+	var reverseSignal = SinOsc.kr(mul: 0, add: tempReverse);
 
 	Out.kr(bus, positionSignal);
+	//Out.kr(
 
 }).add;
 
@@ -100,8 +101,8 @@ SynthDef("Position_Playback_Synth", {arg outputBus, inputBuffer, triggerRecordin
 
 s.waitForBoot({
 
-	~grid128.usePort(15497);
-	~arc4.usePort(15503);
+	~grid128.usePort(16139);
+	~arc4.usePort(16159);
 
 	//variables for recording samples
 	~recordingSynth = [nil, nil, nil, nil];
@@ -335,11 +336,12 @@ s.waitForBoot({
 		if(((messageOne >= 0) && (messageOne <= 7)) && messageThree == 1, {
 
 			if(~playbackStatusIndicator[sampleNumber] == 1, {
+
 				~playbackSynth[sampleNumber].set(\rate, rates[messageOne]);
 				~storedPlaybackRate[sampleNumber] = rates[messageOne];
 
 			}, {
-				~storedPlaybackRate[sampleNumber] = rates[messageOne]
+				~storedPlaybackRate[sampleNumber] = rates[messageOne];
 			}
 			);
 
@@ -565,13 +567,13 @@ s.waitForBoot({
 
 	~pairs = [
 
-		[Parameter.new("Sample Zero Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[0], \cutoff, 0), Parameter.new("Sample Zero Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[0], \resonance, 0)], [Parameter.new("Sample Zero FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[0], \fmSpeed, 0), Parameter.new("Sample Zero FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[0], \fmDepth, 0)], [Parameter.new("Sample ZeroOne Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[0], \start, 0), Parameter.new("Sample Zero Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[0], \length, 0)],
+		[ArcParameter.new("Sample Zero Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[0], \cutoff, 0), ArcParameter.new("Sample Zero Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[0], \resonance, 0)], [ArcParameter.new("Sample Zero FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[0], \fmSpeed, 0), ArcParameter.new("Sample Zero FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[0], \fmDepth, 0)], [ArcParameter.new("Sample ZeroOne Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[0], \start, 0), ArcParameter.new("Sample Zero Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[0], \length, 0)],
 
-		[Parameter.new("Sample One Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[1], \cutoff, 0), Parameter.new("Sample One Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[1], \resonance, 0)], [Parameter.new("Sample One FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[1], \fmSpeed, 0), Parameter.new("Sample One FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[1], \fmDepth, 0)], [Parameter.new("Sample One Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[1], \start, 0), Parameter.new("Sample One Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[1], \length, 0)],
+		[ArcParameter.new("Sample One Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[1], \cutoff, 0), ArcParameter.new("Sample One Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[1], \resonance, 0)], [ArcParameter.new("Sample One FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[1], \fmSpeed, 0), ArcParameter.new("Sample One FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[1], \fmDepth, 0)], [ArcParameter.new("Sample One Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[1], \start, 0), ArcParameter.new("Sample One Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[1], \length, 0)],
 
-		[Parameter.new("Sample Two Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[2], \cutoff, 0), Parameter.new("Sample Two Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[2], \resonance, 0)], [Parameter.new("Sample Two FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[2], \fmSpeed, 0), Parameter.new("Sample Two FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[2], \fmDepth, 0)], [Parameter.new("Sample Two Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[2], \start, 0), Parameter.new("Sample Two Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[2], \length, 0)],
+		[ArcParameter.new("Sample Two Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[2], \cutoff, 0), ArcParameter.new("Sample Two Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[2], \resonance, 0)], [ArcParameter.new("Sample Two FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[2], \fmSpeed, 0), ArcParameter.new("Sample Two FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[2], \fmDepth, 0)], [ArcParameter.new("Sample Two Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[2], \start, 0), ArcParameter.new("Sample Two Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[2], \length, 0)],
 
-		[Parameter.new("Sample Three Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[3], \cutoff, 0), Parameter.new("Sample Three Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[3], \resonance, 0)], [Parameter.new("Sample Three FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[3], \fmSpeed, 0), Parameter.new("Sample Three FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[3], \fmDepth, 0)], [Parameter.new("Sample Three Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[3], \start, 0), Parameter.new("Sample Three Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[3], \length, 0)],
+		[ArcParameter.new("Sample Three Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[3], \cutoff, 0), ArcParameter.new("Sample Three Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[3], \resonance, 0)], [ArcParameter.new("Sample Three FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[3], \fmSpeed, 0), ArcParameter.new("Sample Three FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[3], \fmDepth, 0)], [ArcParameter.new("Sample Three Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[3], \start, 0), ArcParameter.new("Sample Three Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[3], \length, 0)],
 
 	];
 
