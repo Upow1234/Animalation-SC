@@ -5,22 +5,17 @@
 //clearly show how to change different options, specifically changing inputs and outputs
 //indicate volume is low for headroom
 
-//re insert lower volume
+//could have an options variable area at the top
 
-//need to provide better documentation for ArcParameter class
+//re insert lower volume
 
 //redo length formula so it's the same length unless it goes over the end
 
 //how can an old sample continue playing while a new one is being recorded? could rework to use BufWr with a loop and stored phasor position
 
-//...there really needs to be a volume control. press both currently held parameters plus...some third thing? or how about just holding those two things?
-
-//since position and position trigger are sperate is the +1 -1 math necessary anymore?
 
 //add offset outs for more accuracy with trigger recording...also update sample record triggers to new system
 //timing accuracy of recording is straight trash
-
-//what if I try to preset play before I've recorded any triggers??
 
 //clear up old variables and synths...clean up crap comments
 
@@ -47,7 +42,7 @@ SynthDef("Sample_Length_Timer_Synth", {arg outputBus, trigger = 0;
 
 }).add;
 
-SynthDef("Sample_Playback_Synth", {arg rate = 0, position = 0, direction = 1, start = 0, length = 1, fmSpeed = 1, fmDepth = 0, sample, sampleLength, cutoff = 20000, resonance = 1, ledPhasorOutput, popTrigger = 0, positionTrigger = 0;
+SynthDef("Sample_Playback_Synth", {arg rate = 0, position = 0, direction = 1, start = 0, length = 1, fmSpeed = 1, fmDepth = 0, sample, sampleLength, cutoff = 20000, resonance = 1, ledPhasorOutput, popTrigger = 0, positionTrigger = 0, volume = 1;
 
 	var bufrd, phasorDriver;
 	var sampleLengthFrames = sampleLength * BufSampleRate.kr(sample);
@@ -56,11 +51,11 @@ SynthDef("Sample_Playback_Synth", {arg rate = 0, position = 0, direction = 1, st
 
 	var ampShape = Env.new([1, 0, 0, 1], [SampleDur.ir, SampleDur.ir * 2, SampleDur.ir]);
 
-	phasorDriver = Phasor.ar(TDelay.kr(positionTrigger, SampleDur.ir * 3), ((rate * SinOsc.ar(fmSpeed, 0, fmDepth, 1))* direction), (sampleLengthFrames * start), sampleLengthFrames * (start + ((1 - start) * length)), sampleLengthFrames * (position - 1)); //position - 1 is so trigger can read a "0" position and still trigger
+	phasorDriver = Phasor.ar(TDelay.kr(positionTrigger, SampleDur.ir * 3), ((rate * SinOsc.ar(fmSpeed, 0, fmDepth, 1))* direction), (sampleLengthFrames * start), sampleLengthFrames * (start + ((1 - start) * length)), sampleLengthFrames * position); //position - 1 is so trigger can read a "0" position and still trigger
 
-	bufrd = BufRd.ar(2, sample, phasorDriver, 1, 2);
+	bufrd = BufRd.ar(1, sample, phasorDriver, 1, 2);
 
-	Out.ar([0, 1], EnvGen.kr(ampShape, gate: popTrigger) * RLPF.ar(bufrd, cutoff, resonance));
+	Out.ar([0, 1], (EnvGen.kr(ampShape, gate: popTrigger) * RLPF.ar(bufrd, cutoff, resonance) * volume));
 
 	Out.kr(ledPhasorOutput, LinLin.kr(phasorDriver, start * sampleLengthFrames, sampleLengthFrames * (start + ((1 - start) * length)), 0, 16));
 
@@ -236,9 +231,9 @@ s.waitForBoot({
 
 				if(~triggerRecordingStatusIndicator[1] == 1, {
 
-						recordingFunction.value(1, message[1], message[2], message[3], 1);
+					recordingFunction.value(1, message[1], message[2], message[3], 1);
 
-					});
+				});
 
 				~recordableButtons.value(1, message[1], message[2], message[3], 1);
 
@@ -264,9 +259,9 @@ s.waitForBoot({
 
 				if(~triggerRecordingStatusIndicator[2] == 1, {
 
-						recordingFunction.value(2, message[1], message[2], message[3], 1);
+					recordingFunction.value(2, message[1], message[2], message[3], 1);
 
-					});
+				});
 
 				~recordableButtons.value(2, message[1], message[2], message[3], 1);
 
@@ -292,9 +287,9 @@ s.waitForBoot({
 
 				if(~triggerRecordingStatusIndicator[3] == 1, {
 
-						recordingFunction.value(3, message[1], message[2], message[3], 1);
+					recordingFunction.value(3, message[1], message[2], message[3], 1);
 
-					});
+				});
 
 				~recordableButtons.value(3, message[1], message[2], message[3], 1);
 
@@ -303,9 +298,6 @@ s.waitForBoot({
 
 	}, "/monome/grid/key");
 
-
-
-
 	~recordableButtons = {arg sampleNumber, messageOne, messageTwo, messageThree, playRowBoolean;
 
 		var rates = [0.25, 0.375, 0.5, 0.75, 1, 1.5, 2, 3];
@@ -313,11 +305,7 @@ s.waitForBoot({
 
 		switch(playRowBoolean, 1, {
 
-			var sixteenth = 1 / 16;
-
-			var positions = [(sixteenth * 0) + 1, (sixteenth * 1) + 1, (sixteenth * 2) + 1, (sixteenth * 3) + 1, (sixteenth * 4) + 1, (sixteenth * 5) + 1, (sixteenth * 6) + 1, (sixteenth * 7) + 1, (sixteenth * 8) + 1, (sixteenth * 9) + 1, (sixteenth * 10) + 1, (sixteenth * 11) + 1, (sixteenth * 12) + 1, (sixteenth * 13) + 1, (sixteenth * 14) + 1, (sixteenth * 15) + 1];  //plus one is to get around 0 positon not causing retrigger in sample playback
-
-			//postln("recording");
+			var positions = [0, 0.0625, 0.125, 0.1875, 0.25, 0.3125, 0.375, 0.4375, 0.5, 0.5625, 0.625, 0.6875, 0.75, 0.8125, 0.875, 0.9375];
 
 			switch(~recordPositionPreSet[sampleNumber], 0, {
 
@@ -481,8 +469,15 @@ s.waitForBoot({
 					~arcSelectionRight[0] = 1;
 					~arcSelectionRight[1] = matrixIndexes[sampleNumber][messageOneOffset];
 
-					~updateArcLeds.value(2, ~pairs[~arcSelectionRight[1]][0].arcLedValue);
-					~updateArcLeds.value(3, ~pairs[~arcSelectionRight[1]][1].arcLedValue);
+					//this is the hidden volume mixer area
+
+					for(0, 3, {arg i;
+
+						~updateArcLeds.value(i, ~volumes[i].arcLedValue);
+
+					});
+
+					postln("Displaying Master Volume Mixer");
 
 					postln("Holding Selection Right with Index " + ~arcSelectionRight[1]);
 				});
@@ -514,6 +509,13 @@ s.waitForBoot({
 				if(~arcSelectionRight[0] == 1 && ~arcSelectionRight[1] == matrixIndexes[sampleNumber][messageOneOffset], {
 
 					~arcSelectionRight[0] = 0;
+
+					~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue); //display arc selection parameters instead of volumes
+					~updateArcLeds.value(1, ~pairs[~arcSelectionLeft[1]][1].arcLedValue);
+					~updateArcLeds.value(2, ~pairs[~arcSelectionRight[1]][0].arcLedValue);
+					~updateArcLeds.value(3, ~pairs[~arcSelectionRight[1]][1].arcLedValue);
+
+					postln("Hiding Master Volume Mixer");
 
 					postln("Releasing Selection Right with Index" + ~arcSelectionRight[1]);
 				});
@@ -687,24 +689,47 @@ s.waitForBoot({
 				~updateArcLeds.value(messageOne, name.arcLedValue);
 			};
 
-			switch(message[1], 0, {
+			switch(~arcSelectionRight[0], 1, { //hidden volume mixer
 
-				arcFunctions.value(~pairs[~arcSelectionLeft[1]][0], 0, message[2]);
+				switch(message[1], 0, {
 
-			}, 1, {
+					arcFunctions.value(~volumes[0], 0, message[2]);
 
-				arcFunctions.value(~pairs[~arcSelectionLeft[1]][1], 1, message[2]);
+				}, 1, {
 
-			}, 2, {
+					arcFunctions.value(~volumes[1], 1, message[2]);
 
-				arcFunctions.value(~pairs[~arcSelectionRight[1]][0], 2, message[2]);
+				}, 2, {
 
-			}, 3, {
+					arcFunctions.value(~volumes[2], 2, message[2]);
 
-				arcFunctions.value(~pairs[~arcSelectionRight[1]][1], 3, message[2]);
+				}, 3, {
+
+					arcFunctions.value(~volumes[3], 3, message[2]);
+
+				});
+
+			}, 0, {
+
+				switch(message[1], 0, {
+
+					arcFunctions.value(~pairs[~arcSelectionLeft[1]][0], 0, message[2]);
+
+				}, 1, {
+
+					arcFunctions.value(~pairs[~arcSelectionLeft[1]][1], 1, message[2]);
+
+				}, 2, {
+
+					arcFunctions.value(~pairs[~arcSelectionRight[1]][0], 2, message[2]);
+
+				}, 3, {
+
+					arcFunctions.value(~pairs[~arcSelectionRight[1]][1], 3, message[2]);
+
+				});
 
 			});
-
 
 	}, "/monome/enc/delta");
 
@@ -737,7 +762,9 @@ s.waitForBoot({
 
 	];
 
-	//~volumes = [ArcParameter.new
+	//master volume parameters
+
+	~volumes = [ArcParameter.new("Sample Zero Volume", 0, 1, 100, 2, 1, ~playbackSynth[0], \volume, 0), ArcParameter.new("Sample One Volume", 0, 1, 100, 2, 1, ~playbackSynth[1], \volume, 0), ArcParameter.new("Sample Two Volume", 0, 1, 100, 2, 1, ~playbackSynth[2], \volume, 0), ArcParameter.new("Sample Three Volume", 0, 1, 100, 2, 1, ~playbackSynth[3], \volume, 0)];
 
 	~updateGridLeds = {
 
@@ -885,3 +912,4 @@ r.stop;
 ~playbackSynth[0].set(\positionTrigger, 1);
 ~playbackSynth[0].set(\positionTrigger, 0);
 
+s.reboot
