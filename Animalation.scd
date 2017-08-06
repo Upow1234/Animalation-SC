@@ -5,8 +5,6 @@
 //clearly show how to change different options, specifically changing inputs and outputs
 //indicate volume is low for headroom
 
-//should I add recording pitch changes?
-
 //re insert lower volume
 
 //need to provide better documentation for ArcParameter class
@@ -16,14 +14,15 @@
 //how can an old sample continue playing while a new one is being recorded? could rework to use BufWr with a loop and stored phasor position
 
 //...there really needs to be a volume control. press both currently held parameters plus...some third thing? or how about just holding those two things?
-//can't currently disable recording preset without hitting a position knob...
 
 //since position and position trigger are sperate is the +1 -1 math necessary anymore?
 
-//maybe instead of creating a trigger time synth and freeing why not just retrigger it?
+//add offset outs for more accuracy with trigger recording...also update sample record triggers to new system
+//timing accuracy of recording is straight trash
 
-//can use postln("*whatever*"); to make things bold
+//what if I try to preset play before I've recorded any triggers??
 
+//clear up old variables and synths...clean up crap comments
 
 (
 
@@ -67,9 +66,18 @@ SynthDef("Sample_Playback_Synth", {arg rate = 0, position = 0, direction = 1, st
 
 }).add;
 
-SynthDef("Trigger_Time_Distance_Synth", {arg outputBus, trigger = 0;
+SynthDef("Trigger_Time_Distance_Synth", {arg outputBus, trigger;
 
 	Out.kr(outputBus, Sweep.kr(trigger, 1));
+
+}).add;
+
+SynthDef("Trigger_Time_Reset_Impulses", {arg outputBus;
+	var impulse = Impulse.ar(0);
+
+	FreeSelf.kr(Impulse.kr(0));
+
+	OffsetOut.ar(outputBus, impulse);
 
 }).add;
 
@@ -147,10 +155,35 @@ s.waitForBoot({
 	~triggerPlaybackFunction = [nil, nil, nil, nil];
 	~triggerPlaybackTempoClocks = [TempoClock.new(), TempoClock.new(), TempoClock.new(), TempoClock.new()];
 
+	//trigger reset impulse variables
+	~triggerTimeResetImpulseBusses = [Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1)];
+	~triggerTimeResetImpulseSynths = [nil, nil, nil, nil]; // i think this is unnecessary
 
 	OSCFunc.newMatching(
 		{ arg message, time, addr, recvPort;
 			//message 1 = x axis (columns 0-15) message 2 = y axis (rows 0-7)
+
+			var recordingFunction = {arg sampleNumber, messageOne, messageTwo, messageThree, playRowBoolean;
+
+				if(~triggerRecordingSetToClear[sampleNumber] == 1, {
+
+					~triggerRecordingList[sampleNumber].clear;
+					~triggerRecordingSetToClear[sampleNumber] = 0;
+
+				});
+
+				~recordTriggerTimeBus[sampleNumber].get({arg index;
+
+					~triggerRecordingList[sampleNumber].add([sampleNumber, messageOne, messageTwo, messageThree, playRowBoolean, index]);
+					//Synth("Trigger_Time_Reset_Impulses", [\outputBus, ~triggerTimeResetImpulseBusses[sampleNumber]]);
+
+					~recordTriggerTimeSynth[sampleNumber].set(\trigger, 1);
+
+				});
+
+				~recordTriggerTimeSynth[sampleNumber].set(\trigger, 0);
+
+			};
 
 			switch(message[2], 0, { //row 0
 
@@ -160,6 +193,12 @@ s.waitForBoot({
 
 				}, {
 
+					if(~triggerRecordingStatusIndicator[0] == 1, {
+
+						recordingFunction.value(0, message[1], message[2], message[3], 0);
+
+					});
+
 					~recordableButtons.value(0, message[1], message[2], message[3], 0); //the actual action
 
 				});
@@ -168,24 +207,10 @@ s.waitForBoot({
 
 				if(~triggerRecordingStatusIndicator[0] == 1, {
 
-					if(~triggerRecordingSetToClear[0] == 1, {
-
-						~triggerRecordingList[0].clear;
-						~triggerRecordingSetToClear[0] = 0;
-
-					});
-
-					~recordTriggerTimeBus[0].get({arg index;
-
-						~triggerRecordingList[0].add([0, message[1], message[2], message[3], 1, index]);
-
-						~recordTriggerTimeSynth[0].set(\trigger, 1);
-
-					});
+					recordingFunction.value(0, message[1], message[2], message[3], 1);
 
 				});
 
-				~recordTriggerTimeSynth[0].set(\trigger, 0);
 				~recordableButtons.value(0, message[1], message[2], message[3], 1); // the actual action
 
 				//trigger recording not configured below this
@@ -197,11 +222,23 @@ s.waitForBoot({
 
 				}, {
 
+					if(~triggerRecordingStatusIndicator[1] == 1, {
+
+						recordingFunction.value(1, message[1], message[2], message[3], 0);
+
+					});
+
 					~recordableButtons.value(1, message[1], message[2], message[3], 0);
 
 				});
 
 			}, 3, {
+
+				if(~triggerRecordingStatusIndicator[1] == 1, {
+
+						recordingFunction.value(1, message[1], message[2], message[3], 1);
+
+					});
 
 				~recordableButtons.value(1, message[1], message[2], message[3], 1);
 
@@ -213,11 +250,23 @@ s.waitForBoot({
 
 				}, {
 
+					if(~triggerRecordingStatusIndicator[2] == 1, {
+
+						recordingFunction.value(2, message[1], message[2], message[3], 0);
+
+					});
+
 					~recordableButtons.value(2, message[1], message[2], message[3], 0);
 
 				});
 
 			}, 5, {
+
+				if(~triggerRecordingStatusIndicator[2] == 1, {
+
+						recordingFunction.value(2, message[1], message[2], message[3], 1);
+
+					});
 
 				~recordableButtons.value(2, message[1], message[2], message[3], 1);
 
@@ -229,11 +278,23 @@ s.waitForBoot({
 
 				}, {
 
+					if(~triggerRecordingStatusIndicator[3] == 1, {
+
+						recordingFunction.value(3, message[1], message[2], message[3], 0);
+
+					});
+
 					~recordableButtons.value(3, message[1], message[2], message[3], 0);
 
 				});
 
 			}, 7, {
+
+				if(~triggerRecordingStatusIndicator[3] == 1, {
+
+						recordingFunction.value(3, message[1], message[2], message[3], 1);
+
+					});
 
 				~recordableButtons.value(3, message[1], message[2], message[3], 1);
 
@@ -241,6 +302,8 @@ s.waitForBoot({
 
 
 	}, "/monome/grid/key");
+
+
 
 
 	~recordableButtons = {arg sampleNumber, messageOne, messageTwo, messageThree, playRowBoolean;
@@ -515,20 +578,22 @@ s.waitForBoot({
 
 				}, {
 
-					~recordTriggerTimeBus[0].get({arg index;
+					~recordTriggerTimeBus[sampleNumber].get({arg index;
 
 						~triggerRecordingList[sampleNumber][0].put(5, index);
 
-						~recordTriggerTimeSynth[0].set(\trigger, 1);
+						//Synth("Trigger_Time_Reset_Impulses", [\outputBus, ~triggerTimeResetImpulseBusses[sampleNumber]]);
+
+						~recordTriggerTimeSynth[sampleNumber].set(\trigger, 1);
 
 					});
+
+					~recordTriggerTimeSynth[sampleNumber].set(\trigger, 0);
 
 					~triggerRecordingStatusIndicator[sampleNumber] = 0;
 
 					~gridLeds[13 + (ledOffsets[sampleNumber] * 16)] = 0;
 					~updateGridLeds.value;
-
-					~recordTriggerTimeSynth[sampleNumber].set(\trigger, 0);
 
 					postln("Stopping Recording of Sample " + sampleNumber + " triggers");
 
@@ -549,15 +614,13 @@ s.waitForBoot({
 
 			}, 0, {
 
-				~recordTriggerTimeSynth[sampleNumber].set(\trigger, 1);
+				Synth("Trigger_Time_Reset_Impulses", [\outputBus, ~triggerTimeResetImpulseBusses[sampleNumber]]);
 
 				~triggerRecordingStatusIndicator[sampleNumber] = 1;
 				~triggerRecordingSetToClear[sampleNumber] = 1;
 
 				~gridLeds[13 + (ledOffsets[sampleNumber] * 16)] = 15;
 				~updateGridLeds.value;
-
-				~recordTriggerTimeSynth[sampleNumber].set(\trigger, 0);
 
 				postln("Starting Recording of Sample " + sampleNumber + " triggers");
 
@@ -608,15 +671,6 @@ s.waitForBoot({
 
 			});
 
-			/*
-
-			~gridLeds[14 + (ledOffsets[sampleNumber] * 16)] = 15;
-			~updateGridLeds.value;
-
-			postln("Position Playback Pre-Set on Track" + sampleNumber);
-
-			*/
-
 		});
 
 
@@ -665,7 +719,7 @@ s.waitForBoot({
 	//create trigger timer synth
 	for(0, 3, {arg sampleNumber;
 
-		~recordTriggerTimeSynth[sampleNumber] = Synth("Trigger_Time_Distance_Synth", [\outputBus, ~recordTriggerTimeBus[sampleNumber], \trigger, 0]);
+		~recordTriggerTimeSynth[sampleNumber] = Synth("Trigger_Time_Distance_Synth", [\outputBus, ~recordTriggerTimeBus[sampleNumber], \triggerInputBus, ~triggerTimeResetImpulseBusses[sampleNumber]]);
 
 	});
 
@@ -682,6 +736,8 @@ s.waitForBoot({
 		[ArcParameter.new("Sample Three Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[3], \cutoff, 0), ArcParameter.new("Sample Three Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[3], \resonance, 0)], [ArcParameter.new("Sample Three FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[3], \fmSpeed, 0), ArcParameter.new("Sample Three FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[3], \fmDepth, 0)], [ArcParameter.new("Sample Three Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[3], \start, 0), ArcParameter.new("Sample Three Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[3], \length, 0)],
 
 	];
+
+	//~volumes = [ArcParameter.new
 
 	~updateGridLeds = {
 
