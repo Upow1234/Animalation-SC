@@ -1,18 +1,3 @@
-//***************LONG-TERM***************\\
-//could do part of set with short phasing syllables. Also nature sounds. birds. whales.
-//would it be possible to offer a version for grid 128 and no arc???
-//redo length formula so it's the same length unless it goes over the end
-//potential problem of using "Recording/Playback_Reset_Trigger" for multiple functions
-
-//clearly show how to change different options, specifically changing inputs and outputs
-//indicate volume is low for headroom
-
-//could have an options variable area at the top
-
-//re insert lower volume
-
-//figure out that last damn error with the grid leds or something
-
 (
 
 //*************************************************\\
@@ -26,6 +11,8 @@
 ~audioOutput = [0, 1]; // set for stereo output. if you want mono output, format without [ ] brackets (ex. ~audioOutput = 0;
 
 ~maxVolume = 1; // set this value between 0 and 1 to allow more headroom for high resonance sweeps and lots of samples. you can compensate for a lower volume by turning up the output on your audio interface
+
+~defaultVolume = 1; // this controls the default volumes of all the tracks (0 is silent and 1 is all the way up)
 
 //*************************************************\\
 
@@ -641,7 +628,7 @@ s.waitForBoot({
 
 	//master volume parameters
 
-	~volumes = [ArcParameter.new("Sample Zero Volume", 0, 1, 100, 2, 1, ~playbackSynth[0], \volume, 0), ArcParameter.new("Sample One Volume", 0, 1, 100, 2, 1, ~playbackSynth[1], \volume, 0), ArcParameter.new("Sample Two Volume", 0, 1, 100, 2, 1, ~playbackSynth[2], \volume, 0), ArcParameter.new("Sample Three Volume", 0, 1, 100, 2, 1, ~playbackSynth[3], \volume, 0)];
+	~volumes = [ArcParameter.new("Sample Zero Volume", 0, 1, 100, 2, ~defaultVolume, ~playbackSynth[0], \volume, 0), ArcParameter.new("Sample One Volume", 0, 1, 100, 2, ~defaultVolume, ~playbackSynth[1], \volume, 0), ArcParameter.new("Sample Two Volume", 0, 1, 100, 2, ~defaultVolume, ~playbackSynth[2], \volume, 0), ArcParameter.new("Sample Three Volume", 0, 1, 100, 2, ~defaultVolume, ~playbackSynth[3], \volume, 0)];
 
 	~updateGridLeds = {
 
@@ -682,43 +669,7 @@ s.waitForBoot({
 
 	};
 
-
-	//monitor for play row leds
-	~playRowLedMonitor = Task({
-		var interval = 0.01;
-		var playRows = [1, 3, 5, 7];
-
-		loop {
-
-			for(0, 3, {arg i;
-
-				~playRowLedBus[i].get({ arg value;
-
-					if(value.asInteger != ~currentPlayLed[i], {
-						~currentPlayLed[i] = value.asInteger;
-
-						for(0, 15, {arg x;
-							~gridLeds[x + (playRows[i] * 16)] = 1;
-						});
-
-						~gridLeds[value.asInteger + (playRows[i] * 16)] = 15;
-						~updateGridLeds.value;
-
-					});
-
-				});
-
-			});
-
-			interval.yield;
-		}
-
-	});
-
-	~playRowLedMonitor.play;
-
 	//initialize control row leds
-
 	forBy(0, 6, 2, {arg y;
 		for(0, 15, {arg x;
 
@@ -763,6 +714,40 @@ s.waitForBoot({
 		};
 
 	});
+
+	//monitor for play row leds
+	~playRowLedMonitor = Task({
+		var interval = 0.01;
+		var playRows = [1, 3, 5, 7];
+
+		loop {
+
+			for(0, 3, {arg i;
+
+				~playRowLedBus[i].get({ arg value;
+
+					if(value.asInteger != ~currentPlayLed[i], {
+						~currentPlayLed[i] = value.asInteger;
+
+						for(0, 15, {arg x;
+							~gridLeds[x + (playRows[i] * 16)] = 1;
+						});
+
+						~gridLeds[value.asInteger + (playRows[i] * 16)] = 15;
+						~updateGridLeds.value;
+
+					});
+
+				});
+
+			});
+
+			interval.yield;
+		}
+
+	});
+
+	SystemClock.sched(1, { ~playRowLedMonitor.play });
 
 
 }); //end wait for boot
