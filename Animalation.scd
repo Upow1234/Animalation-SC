@@ -11,19 +11,24 @@
 
 //re insert lower volume
 
-//ERROR: Meta_Bus:audio: failed to get an audio bus allocated. numChannels: 1 server: localhost (causes clicks)
-
-
-//add offset outs for more accuracy with trigger recording...also update sample record triggers to new system
-//timing accuracy of recording is straight trash
-
-//clear up old variables and synths...clean up crap comments
-
-
-
-//why do things take two times to take effect???
+//figure out that last damn error with the grid leds or something
 
 (
+
+//*************************************************\\
+
+//  USER OPTIONS AREA  \\
+
+// audio inputs and outputs start counting from 0 (input 1 on your interface is 0, input 2 is 1 etc.)
+
+~audioInput = 0;
+~maxRecordingLength = 120; // the maximum number of seconds you can record one sample
+~audioOutput = [0, 1]; // set for stereo output. if you want mono output, format without [ ] brackets (ex. ~audioOutput = 0;
+
+~maxVolume = 1; // set this value between 0 and 1 to allow more headroom for high resonance sweeps and lots of samples. you can compensate for a lower volume by turning up the output on your audio interface
+
+//*************************************************\\
+
 s.reboot; //releases all busses for reallocation
 
 s = Server.local;
@@ -33,41 +38,6 @@ s = Server.local;
 
 Buffer.freeAll; //essential or buffers start piling up in RAM
 
-//********************************************************************************************************************
-/*
-SynthDef.new("Sample_Recording_Synth", {arg sample;
-var sampleInput;
-
-sampleInput = SoundIn.ar(0);
-RecordBuf.ar(sampleInput, sample, loop: 0, doneAction: Done.freeSelf);
-
-}).add;
-
-SynthDef("Sample_Length_Timer_Synth", {arg outputBus, trigger = 0;
-
-Out.kr(outputBus, Sweep.kr(trigger, 1));
-
-}).add;
-
-SynthDef("Sample_Playback_Synth", {arg rate = 0, position = 0, direction = 1, start = 0, length = 1, fmSpeed = 1, fmDepth = 0, sample, sampleLength, cutoff = 20000, resonance = 1, ledPhasorOutput, popTrigger = 0, positionTrigger = 0, volume = 1;
-
-var bufrd, phasorDriver;
-var sampleLengthFrames = sampleLength * BufSampleRate.kr(sample);
-
-var fm = SinOsc.kr(fmSpeed, 0, fmDepth);
-
-var ampShape = Env.new([1, 0, 0, 1], [SampleDur.ir, SampleDur.ir * 2, SampleDur.ir]);
-
-phasorDriver = Phasor.ar(TDelay.kr(positionTrigger, SampleDur.ir * 3), ((rate * SinOsc.ar(fmSpeed, 0, fmDepth, 1))* direction), (sampleLengthFrames * start), sampleLengthFrames * (start + ((1 - start) * length)), sampleLengthFrames * position); //position - 1 is so trigger can read a "0" position and still trigger
-
-bufrd = BufRd.ar(1, sample, phasorDriver, 1, 2);
-
-Out.ar([0, 1], (EnvGen.kr(ampShape, gate: popTrigger) * RLPF.ar(bufrd, cutoff, resonance) * volume));
-
-Out.kr(ledPhasorOutput, LinLin.kr(phasorDriver, start * sampleLengthFrames, sampleLengthFrames * (start + ((1 - start) * length)), 0, 16));
-
-}).add;
-*/
 SynthDef.new("Recording/Playback_Reset_Trigger", { arg destination;
 
 	FreeSelf.kr(Impulse.kr(0));
@@ -88,7 +58,7 @@ SynthDef.new("Sample_Recording_Synth", { arg rate = 1, sampleBuffer, lengthBusOu
 
 	var phasor = Phasor.ar(0, rate, 0, BufFrames.kr(sampleBuffer), 0);
 
-	var recording = BufWr.ar(SoundIn.ar(0), sampleBuffer, phasor, 1);
+	var recording = BufWr.ar(SoundIn.ar(~audioInput), sampleBuffer, phasor, 1);
 
 	Out.kr(positionBusOutput, phasor);
 
@@ -122,18 +92,16 @@ SynthDef.new("Sample_Playback_Synth", { arg rate, sampleBuffer, startValue, leng
 
 	var filter = RLPF.ar(bufrd, cutoff, resonance);
 
-	var ampShape = Env.new([1, 0, 0, 1], [bufSampleRate, bufSampleRate * 2, bufSampleRate]);
+	var ampShape = Env.new([~maxVolume, 0, 0, ~maxVolume], [bufSampleRate, bufSampleRate * 2, bufSampleRate]);
 
 	var envelope = EnvGen.ar(ampShape, gate: In.ar(clickStopTrigger));
 
-	Out.ar([0, 1], (filter * volume) * envelope);
+	Out.ar(~audioOutput, (filter * volume) * envelope);
 
 	//led position output
 	Out.kr(ledPhasorOutput, LinLin.kr(phasor, startLoopPosition, endLoopPosition, 0, 16));
 
 }).add;
-
-//********************************************************************************************************************
 
 SynthDef("Trigger_Time_Distance_Synth", {arg outputBus, triggerInputBus;
 
@@ -155,57 +123,29 @@ s.waitForBoot({
 	~grid128.usePort(16139);
 	~arc4.usePort(16159);
 
-	//*******************************************************************************************************************
 	~sampleRecordCurrentPosition = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
 	~sampleRecordCurrentLength = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
 	~retriggerSampleRecordTimer = [Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1)];
 	~playbackPhasorNewPositionTrigger = [Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1)];
 
 	~currentPlaybackStart = [0, 0, 0, 0]; //stores in frames
-	~currentPlaybackEnd = [1, 1, 1, 1]; //stores in frames. 1 is just filler for now...
-	~currentPlaybackLength = [1, 1, 1, 1]; //stores in seconds. 1 is just filler for now...
+	~currentPlaybackEnd = [1, 1, 1, 1]; //stores in frames. 1 is just filler.
+	~currentPlaybackLength = [1, 1, 1, 1]; //stores in seconds. 1 is just filler.
 
-	~sampleStorageBuffer = [Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1)];
+	~sampleStorageBuffer = [Buffer.alloc(s, s.sampleRate * ~maxRecordingLength, 1), Buffer.alloc(s, s.sampleRate * ~maxRecordingLength, 1), Buffer.alloc(s, s.sampleRate * ~maxRecordingLength, 1), Buffer.alloc(s, s.sampleRate * ~maxRecordingLength, 1)];
 
 	~clickStopTriggerBus = [Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1)];
 
-	//*******************************************************************************************************************
-	//variables for recording samples
 	~recordingSynth = [nil, nil, nil, nil];
 
 	~recordingStatusIndicator = [0, 0, 0, 0];
-	~recordTimeBus = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
-	~recordingLengthTimer = [nil, nil, nil, nil];
-
-	~recordingLength = [1, 1, 1, 1];
-
-	//variables for playing samples back
-	~sampleSynth = [Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), Buffer.alloc(s, s.sampleRate * 120.0, 1), ]; //sets maximum sample time to two minutes (120.0 seconds)
 
 	~playbackSynth = [nil, nil, nil, nil];
 	~playbackStatusIndicator = [0, 0, 0, 0];
 
-	//variables for playback parameters
-
 	~samplePlaybackDirection = [1, 1, 1, 1];
 	~storedPlaybackRate = [1, 1, 1, 1];
 
-
-	//variables for recording key triggers
-
-	~recordPositionPreSet = [0, 0, 0, 0];
-	~recordPostionStatusIndicator = [0, 0, 0, 0];
-	~recordPositionLengthTimer = [0, 0, 0, 0];
-
-	~playPositionPreSet = [0, 0, 0, 0];
-
-	~playPositionStatusIndicator = [0, 0, 0, 0];
-
-	//variables for arc parameters
-	~loopStartPosition = [0, 0, 0, 0];
-	~loopEndPosition = [1, 1, 1, 1];
-
-	//variables for matrix selection
 	~arcSelectionLeft = [0, 0]; //left is holding status (one is held 0 is not) right is selection index
 	~arcSelectionRight = [0, 1];
 
@@ -214,18 +154,14 @@ s.waitForBoot({
 
 	~controlRowLedDefaultValues = [7, 3, 7, 3, 7, 3, 7, 3, 0, 3, 0, 0, 0, 3, 0, 3];
 
-	//play row led variables
 	~playRowLedBus = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
 	~currentPlayLed = [-1, -1, -1, -1]; //set to negative one so first position will be 0
 
-	//trigger recording variables
 	~triggerRecordingStatusIndicator = [0, 0, 0, 0];
-	~triggerRecordingPreSet = [0, 0, 0, 0];
 
 	~recordTriggerTimeSynth = [nil, nil, nil, nil];
 
 	~recordTriggerTimeBus = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
-	~recordTriggerLengthTime = [0, 0, 0, 0];
 
 	~triggerRecordingList = [List.new(0), List.new(0), List.new(0), List.new(0)];
 
@@ -238,215 +174,95 @@ s.waitForBoot({
 	~triggerPlaybackFunction = [nil, nil, nil, nil];
 	~triggerPlaybackTempoClocks = [TempoClock.new(), TempoClock.new(), TempoClock.new(), TempoClock.new()];
 
-	//trigger reset impulse variables
 	~triggerTimeResetImpulseBusses = [Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1)];
-	~triggerTimeResetImpulseSynths = [nil, nil, nil, nil]; // i think this is unnecessary
 
-	OSCFunc.newMatching(
+	OSCFunc.newMatching( //grid functionality
 		{ arg message, time, addr, recvPort;
 			//message 1 = x axis (columns 0-15) message 2 = y axis (rows 0-7)
 
-			var recordingFunction = {arg sampleNumber, messageOne, messageTwo, messageThree, playRowBoolean;
+			var recordingFunction = {arg sampleNumber, messageOne, messageTwo, playRowBoolean;
 
 				if(~triggerRecordingSetToClear[sampleNumber] == 1, {
-
 					~triggerRecordingList[sampleNumber].clear;
 					~triggerRecordingSetToClear[sampleNumber] = 0;
-
 				});
 
 				~recordTriggerTimeBus[sampleNumber].get({arg index;
 
-					~triggerRecordingList[sampleNumber].add([sampleNumber, messageOne, messageTwo, messageThree, playRowBoolean, index]);
-					//Synth("Trigger_Time_Reset_Impulses", [\outputBus, ~triggerTimeResetImpulseBusses[sampleNumber]]);
-
+					~triggerRecordingList[sampleNumber].add([sampleNumber, messageOne, messageTwo, playRowBoolean, index]);
 					Synth("Trigger_Time_Reset_Impulses", [\outputBus, ~triggerTimeResetImpulseBusses[sampleNumber]]);
 
 				});
 
+			};
 
+			var evenRow = {arg sampleNumber, messageOne, messageTwo, messageThree;
+
+				if(messageOne > 9, {
+					~nonRecordableButtons.value(sampleNumber, messageOne, messageTwo, messageThree);
+				}, {
+					if(messageThree == 1, {
+						if(~triggerRecordingStatusIndicator[sampleNumber] == 1, {
+							recordingFunction.value(sampleNumber, messageOne, messageTwo, 0);
+						});
+						~recordableButtons.value(sampleNumber, messageOne, messageTwo, 0);
+					});
+				});
 
 			};
 
-			switch(message[2], 0, { //row 0
+			var oddRow = {arg sampleNumber, messageOne, messageTwo, messageThree;
 
-				if(message[1] > 9, {
-
-					~nonRecordableButtons.value(0, message[1], message[2], message[3]);
-
-				}, {
-
-					if(~triggerRecordingStatusIndicator[0] == 1, {
-
-						recordingFunction.value(0, message[1], message[2], message[3], 0);
-
+				if(messageThree == 1, {
+					if(~triggerRecordingStatusIndicator[sampleNumber] == 1, {
+						recordingFunction.value(sampleNumber, messageOne, messageTwo, 1);
 					});
-
-					if(message[3] == 1, {
-
-					~recordableButtons.value(0, message[1], message[2], message[3], 0); //the actual action
-
-					});
-
+					~recordableButtons.value(sampleNumber, messageOne, messageTwo, 1);
 				});
 
-			}, 1, {//row 1
+			};
 
-				if(~triggerRecordingStatusIndicator[0] == 1, {
-
-					if(message[3] == 1, {
-
-					recordingFunction.value(0, message[1], message[2], message[3], 1);
-
-					});
-
-				});
-
-				~recordableButtons.value(0, message[1], message[2], message[3], 1); // the actual action
-
+			switch(message[2], 0, {
+				evenRow.value(0, message[1], message[2], message[3]);
+			}, 1, {
+				oddRow.value(0, message[1], message[2], message[3]);
 			}, 2, {
-
-				if(message[1] > 9, {
-
-					~nonRecordableButtons.value(1, message[1], message[2], message[3]);
-
-				}, {
-
-					if(~triggerRecordingStatusIndicator[1] == 1, {
-
-						if(message[3] == 1, {
-
-						recordingFunction.value(1, message[1], message[2], message[3], 0);
-
-						});
-
-					});
-
-					~recordableButtons.value(1, message[1], message[2], message[3], 0);
-
-				});
-
+				evenRow.value(1, message[1], message[2], message[3]);
 			}, 3, {
-
-				if(~triggerRecordingStatusIndicator[1] == 1, {
-
-					if(message[3] == 1, {
-
-					recordingFunction.value(1, message[1], message[2], message[3], 1);
-
-					});
-
-				});
-
-				~recordableButtons.value(1, message[1], message[2], message[3], 1);
-
+				oddRow.value(1, message[1], message[2], message[3]);
 			}, 4, {
-
-				if(message[1] > 9, {
-
-					~nonRecordableButtons.value(2, message[1], message[2], message[3]);
-
-				}, {
-
-					if(~triggerRecordingStatusIndicator[2] == 1, {
-
-						if(message[3] == 1, {
-
-						recordingFunction.value(2, message[1], message[2], message[3], 0);
-
-						});
-
-					});
-
-					~recordableButtons.value(2, message[1], message[2], message[3], 0);
-
-				});
-
+				evenRow.value(2, message[1], message[2], message[3]);
 			}, 5, {
-
-				if(~triggerRecordingStatusIndicator[2] == 1, {
-
-					if(message[3] == 1, {
-
-					recordingFunction.value(2, message[1], message[2], message[3], 1);
-
-					});
-
-				});
-
-				~recordableButtons.value(2, message[1], message[2], message[3], 1);
-
+				oddRow.value(2, message[1], message[2], message[3]);
 			}, 6, {
-
-				if(message[1] > 9, {
-
-					~nonRecordableButtons.value(3, message[1], message[2], message[3]);
-
-				}, {
-
-					if(~triggerRecordingStatusIndicator[3] == 1, {
-
-						if(message[3] == 1, {
-
-						recordingFunction.value(3, message[1], message[2], message[3], 0);
-
-						});
-					});
-
-					~recordableButtons.value(3, message[1], message[2], message[3], 0);
-
-				});
-
+				evenRow.value(3, message[1], message[2], message[3]);
 			}, 7, {
-
-				if(~triggerRecordingStatusIndicator[3] == 1, {
-
-					if(message[3] == 1, {
-
-					recordingFunction.value(3, message[1], message[2], message[3], 1);
-
-					});
-
-				});
-
-				~recordableButtons.value(3, message[1], message[2], message[3], 1);
-
+				oddRow.value(3, message[1], message[2], message[3]);
 			});
 
 
 	}, "/monome/grid/key");
 
-	~recordableButtons = {arg sampleNumber, messageOne, messageTwo, messageThree, playRowBoolean;
+
+	~recordableButtons = {arg sampleNumber, messageOne, messageTwo, playRowBoolean;
 
 		var rates = [0.25, 0.375, 0.5, 0.75, 1, 1.5, 2, 3];
 		var ledOffsets = [0, 2, 4, 6];
 
-		switch(playRowBoolean, 1, {
+		switch(playRowBoolean, 1, { //play row
 
 			var positions = [0, 0.0625, 0.125, 0.1875, 0.25, 0.3125, 0.375, 0.4375, 0.5, 0.5625, 0.625, 0.6875, 0.75, 0.8125, 0.875, 0.9375];
 
-			if(messageThree == 1, {
+			~playbackSynth[sampleNumber].set(\position, positions[messageOne]);
 
-				~playbackSynth[sampleNumber].set(\position, positions[messageOne]);
+			Synth("Recording/Playback_Reset_Trigger", [\destination,  ~playbackPhasorNewPositionTrigger[sampleNumber]]);
+			Synth("Click_Stop_Trigger", [\destination,  ~clickStopTriggerBus[sampleNumber]]);
 
-				Synth("Recording/Playback_Reset_Trigger", [\destination,  ~playbackPhasorNewPositionTrigger[sampleNumber]]);
+			postln("Sample" + sampleNumber + "Position =" + positions[messageOne]);
 
-				Synth("Click_Stop_Trigger", [\destination,  ~clickStopTriggerBus[sampleNumber]]);
-
-				postln("Sample " + sampleNumber + " Position = " + positions[messageOne]);
-			});
-
-			if(messageThree == 0, { //hopefully can get rid of this
-
-				//NOTHING HERE
-				postln("Position Released on Sample" + sampleNumber);
-			});
-
-
-			//*******************************************************************************************************************
 		}, 0, {
-			//*****PLAYBACK BUTTON*****\\
-			if(messageOne == 9 && messageThree == 1, {
+
+			if(messageOne == 9, { //playback on/off
 
 				if(~playbackStatusIndicator[sampleNumber] == 1, {
 					~playbackSynth[sampleNumber].set(\rate, 0);
@@ -456,8 +272,7 @@ s.waitForBoot({
 					~gridLeds[9 + (ledOffsets[sampleNumber] * 16)] = 3;
 					~updateGridLeds.value;
 
-					postln("Stoping Playback of Sample " + sampleNumber);
-
+					postln("Stoping Playback of Sample" + sampleNumber);
 				}, {
 					~playbackSynth[sampleNumber].set(\rate, ~storedPlaybackRate[0]);
 
@@ -466,18 +281,16 @@ s.waitForBoot({
 					~gridLeds[9 + (ledOffsets[sampleNumber] * 16)] = 15;
 					~updateGridLeds.value;
 
-					postln("Playing Sample " + sampleNumber);
+					postln("Playing Sample" + sampleNumber);
 				});
 
 			});
-			//*******************************************************************************************************************
-			if(((messageOne >= 0) && (messageOne <= 7)) && messageThree == 1, {
+
+			if(((messageOne >= 0) && (messageOne <= 7)), { //pitch selection
 
 				if(~playbackStatusIndicator[sampleNumber] == 1, {
-
 					~playbackSynth[sampleNumber].set(\rate, rates[messageOne]);
 					~storedPlaybackRate[sampleNumber] = rates[messageOne];
-
 				}, {
 					~storedPlaybackRate[sampleNumber] = rates[messageOne];
 				}
@@ -485,33 +298,30 @@ s.waitForBoot({
 
 				for(0, 7, {arg i;
 					~gridLeds[i + (ledOffsets[sampleNumber] * 16)] = ~controlRowLedDefaultValues[i];
-
 				});
 
 				~gridLeds[messageOne + (ledOffsets[sampleNumber] * 16)] = 15;
 				~updateGridLeds.value;
 
-				postln("Sample " + sampleNumber + " Rate = " + rates[messageOne]);
+				postln("Sample" + sampleNumber + "Rate =" + rates[messageOne]);
+
 			});
 
-			if(messageOne == 8 && messageThree == 1, {
+			if(messageOne == 8, { //sample direction
+
 				~samplePlaybackDirection[sampleNumber] = ~samplePlaybackDirection[sampleNumber] * -1;
 
 				~playbackSynth[sampleNumber].set(\direction, ~samplePlaybackDirection[sampleNumber]);
 
 				switch(~samplePlaybackDirection[sampleNumber], 1, {
-
 					~gridLeds[8 + (ledOffsets[sampleNumber] * 16)] = 0;
 					~updateGridLeds.value;
-
 				}, -1, {
-
 					~gridLeds[8 + (ledOffsets[sampleNumber] * 16)] = 15;
 					~updateGridLeds.value;
-
 				});
 
-				postln("Direction on Track " + sampleNumber + " = " + ~samplePlaybackDirection[sampleNumber]);
+				postln("Direction on Track" + sampleNumber + "=" + ~samplePlaybackDirection[sampleNumber]);
 			});
 
 		});
@@ -519,20 +329,14 @@ s.waitForBoot({
 	};
 
 
-
-	//**************************-----NON RECORDABLE-------------******************************
 	~nonRecordableButtons = {arg sampleNumber, messageOne, messageTwo, messageThree;
 
 		var matrixIndexes = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]];
-
 		var ledOffsets = [0, 2, 4, 6];
 
-		//postln("NON RECORDING");
+		if((messageOne == 12) || (messageOne == 11) || (messageOne == 10), { //arc control selection matrix
 
-		//----ARC SELECTION MATRIX
-		if((messageOne == 12) || (messageOne == 11) || (messageOne == 10), {
 			var messageOneOffset = messageOne - 10;
-
 			var matrixLedLocations = [[10, 0], [11, 0], [12, 0], [10, 2], [11, 2], [12, 2], [10, 4], [11, 4], [12, 4], [10, 6], [11, 6], [12, 6]];
 
 			if (messageThree == 1, {
@@ -540,9 +344,7 @@ s.waitForBoot({
 				switch(~arcSelectionLeft[0], 0,{
 
 					if(matrixIndexes[sampleNumber][messageOneOffset] == ~arcSelectionRight[1], { //if you try to select slot one where slot two already is
-
 						~arcSelectionRight[1] = matrixIndexes[sampleNumber][(messageOneOffset + 1) % 3];
-
 					});
 
 					~arcSelectionLeft[0] = 1; //one means true or is held
@@ -551,7 +353,8 @@ s.waitForBoot({
 					~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue);
 					~updateArcLeds.value(1, ~pairs[~arcSelectionLeft[1]][1].arcLedValue);
 
-					postln("Holding Selection Left with Index " + ~arcSelectionLeft[1]);
+					postln("Selection Left Index =" + ~arcSelectionLeft[1]);
+
 				}, 1, {
 
 					~arcSelectionRight[0] = 1;
@@ -560,21 +363,17 @@ s.waitForBoot({
 					//this is the hidden volume mixer area
 
 					for(0, 3, {arg i;
-
 						~updateArcLeds.value(i, ~volumes[i].arcLedValue);
-
 					});
 
+					postln("Selection Right Index =" + ~arcSelectionRight[1]);
 					postln("Displaying Master Volume Mixer");
 
-					postln("Holding Selection Right with Index " + ~arcSelectionRight[1]);
 				});
 
 				for(10, 12, {arg x; //clear and reset arc selection matrix leds
 					forBy(0, 6, 2, {arg y;
-
 						~gridLeds[x + (y * 16)] = 0;
-
 					});
 				});
 
@@ -588,14 +387,11 @@ s.waitForBoot({
 			if(messageThree == 0, {
 
 				if(~arcSelectionLeft[0] == 1 && ~arcSelectionLeft[1] == matrixIndexes[sampleNumber][messageOneOffset], {
-
 					~arcSelectionLeft[0] = 0;
-
-					postln("Releasing Selection Left with Index " + ~arcSelectionLeft[1]);
+					//postln("Releasing Selection Left with Index" + ~arcSelectionLeft[1]);
 				});
 
 				if(~arcSelectionRight[0] == 1 && ~arcSelectionRight[1] == matrixIndexes[sampleNumber][messageOneOffset], {
-
 					~arcSelectionRight[0] = 0;
 
 					~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue); //display arc selection parameters instead of volumes
@@ -604,16 +400,14 @@ s.waitForBoot({
 					~updateArcLeds.value(3, ~pairs[~arcSelectionRight[1]][1].arcLedValue);
 
 					postln("Hiding Master Volume Mixer");
-
-					postln("Releasing Selection Right with Index" + ~arcSelectionRight[1]);
+					//postln("Releasing Selection Right with Index" + ~arcSelectionRight[1]);
 				});
 
 			});
 
 		});
-		//*******************************************************************************************************
-		//----RECORD BUTTON
-		if(messageOne == 15 && messageThree == 1, {
+
+		if(messageOne == 15 && messageThree == 1, { //sample record button
 
 			switch(~recordingStatusIndicator[sampleNumber], 0, {
 
@@ -634,7 +428,7 @@ s.waitForBoot({
 				~gridLeds[15 + (ledOffsets[sampleNumber] * 16)] = 15;
 				~updateGridLeds.value;
 
-				postln("Recording Sample " + sampleNumber);
+				postln("Recording Sample" + sampleNumber);
 
 			}, 1, {
 
@@ -642,7 +436,7 @@ s.waitForBoot({
 				~sampleRecordCurrentPosition[sampleNumber].get({arg i;
 					~currentPlaybackEnd[sampleNumber] = i;
 
-					postln("~currentPlaybackEnd[" + sampleNumber + "] = " + ~currentPlaybackEnd[sampleNumber]);
+					//postln("~currentPlaybackEnd[" + sampleNumber + "] =" + ~currentPlaybackEnd[sampleNumber]);
 				});
 
 				~sampleRecordCurrentLength[sampleNumber].get({arg i;
@@ -650,7 +444,7 @@ s.waitForBoot({
 
 					~playbackSynth[sampleNumber].set(\lengthValue, i);
 
-					postln("~currentPlaybackLength[" + sampleNumber + "] = " + ~currentPlaybackLength[sampleNumber]);
+					//postln("~currentPlaybackLength[" + sampleNumber + "] = " + ~currentPlaybackLength[sampleNumber]);
 				});
 
 				~recordingStatusIndicator[sampleNumber] = 0;
@@ -662,15 +456,13 @@ s.waitForBoot({
 				~gridLeds[15 + (ledOffsets[sampleNumber] * 16)] = 3;
 				~updateGridLeds.value;
 
-				postln("Stopping Recording of Sample " + sampleNumber);
+				postln("Stopping Recording of Sample" + sampleNumber);
 
 			});
 
 		});
-		//*******************************************************************************************************
 
-		//----RECORD TRIGGERS BUTTON
-		if(messageOne == 13 && messageThree == 1, {//get out of record triggers preset, clear old list
+		if(messageOne == 13 && messageThree == 1, { //activate trigger record
 
 			switch(~triggerRecordingStatusIndicator[sampleNumber], 1, {
 
@@ -682,13 +474,13 @@ s.waitForBoot({
 					~gridLeds[13 + (ledOffsets[sampleNumber] * 16)] = 0;
 					~updateGridLeds.value;
 
-					post("Trigger Recorder " + sampleNumber + " released from PreSet State");
+					post("Trigger Recorder" + sampleNumber + "released from PreSet State");
 
 				}, {
 
 					~recordTriggerTimeBus[sampleNumber].get({arg index;
 
-						~triggerRecordingList[sampleNumber][0].put(5, index);
+						~triggerRecordingList[sampleNumber][0].put(4, index);
 
 						Synth("Trigger_Time_Reset_Impulses", [\outputBus, ~triggerTimeResetImpulseBusses[sampleNumber]]);
 
@@ -699,7 +491,7 @@ s.waitForBoot({
 					~gridLeds[13 + (ledOffsets[sampleNumber] * 16)] = 0;
 					~updateGridLeds.value;
 
-					postln("Stopping Recording of Sample " + sampleNumber + " triggers");
+					postln("Stopping Recording of Sample" + sampleNumber + "triggers");
 
 
 					if(~triggerPlaybackPreSet[sampleNumber] == 1, { //if playback PreSet is on
@@ -726,14 +518,13 @@ s.waitForBoot({
 				~gridLeds[13 + (ledOffsets[sampleNumber] * 16)] = 15;
 				~updateGridLeds.value;
 
-				postln("Starting Recording of Sample " + sampleNumber + " triggers");
+				postln("Starting Recording of Sample" + sampleNumber + "triggers");
 
 			});
 
 		});
 
-		//----PLAY TRIGGERS BUTTON
-		if(messageOne == 14 && messageThree == 1, {
+		if(messageOne == 14 && messageThree == 1, { //play triggers
 
 			switch(~triggerPlaybackStatusIndicator[sampleNumber], 0, {
 
@@ -757,7 +548,7 @@ s.waitForBoot({
 
 					~triggerPlaybackPreSet[sampleNumber] = 0;
 
-					postln("Playing Position Recording on Track" + sampleNumber);
+					postln("Playing Trigger Recording on Track" + sampleNumber);
 
 				});
 
@@ -782,7 +573,7 @@ s.waitForBoot({
 
 
 
-	OSCFunc.newMatching(
+	OSCFunc.newMatching( // arc funtionality
 		{ arg message, time, addr, recvPort;
 
 			var arcFunctions = {arg name, messageOne, messageTwo;
@@ -794,41 +585,25 @@ s.waitForBoot({
 			switch(~arcSelectionRight[0], 1, { //hidden volume mixer
 
 				switch(message[1], 0, {
-
 					arcFunctions.value(~volumes[0], 0, message[2]);
-
 				}, 1, {
-
 					arcFunctions.value(~volumes[1], 1, message[2]);
-
 				}, 2, {
-
 					arcFunctions.value(~volumes[2], 2, message[2]);
-
 				}, 3, {
-
 					arcFunctions.value(~volumes[3], 3, message[2]);
-
 				});
 
 			}, 0, {
 
 				switch(message[1], 0, {
-
 					arcFunctions.value(~pairs[~arcSelectionLeft[1]][0], 0, message[2]);
-
 				}, 1, {
-
 					arcFunctions.value(~pairs[~arcSelectionLeft[1]][1], 1, message[2]);
-
 				}, 2, {
-
 					arcFunctions.value(~pairs[~arcSelectionRight[1]][0], 2, message[2]);
-
 				}, 3, {
-
 					arcFunctions.value(~pairs[~arcSelectionRight[1]][1], 3, message[2]);
-
 				});
 
 			});
@@ -923,13 +698,10 @@ s.waitForBoot({
 						~currentPlayLed[i] = value.asInteger;
 
 						for(0, 15, {arg x;
-
 							~gridLeds[x + (playRows[i] * 16)] = 1;
-
 						});
 
 						~gridLeds[value.asInteger + (playRows[i] * 16)] = 15;
-
 						~updateGridLeds.value;
 
 					});
@@ -980,15 +752,11 @@ s.waitForBoot({
 
 			~triggerPlaybackTempoClocks[i].sched(0, {
 
-				//s.makeBundle(s.latency, { });
-					~recordableButtons.value(~triggerRecordingList[i][count][0], ~triggerRecordingList[i][count][1], ~triggerRecordingList[i][count][2], ~triggerRecordingList[i][count][3], ~triggerRecordingList[i][count][4]);
-
-
-				post(~triggerRecordingList[i][count]); postln(" " + count);
+				~recordableButtons.value(~triggerRecordingList[i][count][0], ~triggerRecordingList[i][count][1], ~triggerRecordingList[i][count][2], ~triggerRecordingList[i][count][3]);
 
 				count = ((count + 1) % ~triggerRecordingList[i].size);
 
-					~triggerRecordingList[i][count][5].postln;
+				~triggerRecordingList[i][count][4];
 
 			});
 
@@ -1000,5 +768,3 @@ s.waitForBoot({
 }); //end wait for boot
 
 )
-
-s.reboot
