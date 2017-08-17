@@ -2,6 +2,12 @@
 
 //*************************************************\\
 
+// ESSENTIAL TO MAKE YOUR GRID AND ARC WORK WITH THIS PROGRAM:
+// enter the numbers you see in the post window after "Device connected on port: " for both your grid 128 and your arc
+
+~gridDevicePort = 16139;
+~arcDevicePort = 16159;
+
 //  USER OPTIONS AREA  \\
 
 // audio inputs and outputs start counting from 0 (input 1 on your interface is 0, input 2 is 1 etc.)
@@ -103,8 +109,8 @@ SynthDef("Trigger_Time_Reset_Impulses", {arg outputBus;
 
 s.waitForBoot({
 
-	~grid128.usePort(16139);
-	~arc4.usePort(16159);
+	~grid128.usePort(~gridDevicePort);
+	~arc4.usePort(~arcDevicePort);
 
 	~sampleRecordCurrentPosition = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
 	~retriggerSampleRecordTimer = [Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1)];
