@@ -20,7 +20,7 @@
 
 ~volumeDefault = 0.5; // this controls the default volumes of all the tracks (0 is silent and 1 is all the way up)
 
-~volumeMixerHoldTime = nil; //sets how long (in seconds) you must hold down the two arc selection matrix buttons
+~volumeMixerHoldTime = 1; //sets how long (in seconds) you must hold down the two arc selection matrix buttons
 //to be able to hold the volume mixer on. If set to 'nil' holding volume mixer on will be disabled
 
 //*************************************************\\
@@ -365,7 +365,7 @@ s.waitForBoot({
 					postln("Selection Right Index =" + ~arcSelectionRight[1]);
 					postln("Displaying Master Volume Mixer");
 
-					if(~volumeMixerHoldTime.isNil, { }, {
+					if(~volumeMixerHoldTime.notNil, {
 					switch(~volumeMixerHeldStatus, 0, { //holding volume mixer on
 
 						AppClock.clear;
