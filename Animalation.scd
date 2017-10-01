@@ -14,11 +14,14 @@
 
 ~audioInput = 0;
 ~maxRecordingLength = 120; // the maximum number of seconds you can record one sample
-~audioOutput = [0, 1]; // set for stereo output. if you want mono output, format without [ ] brackets (ex. ~audioOutput = 0;
+~audioOutput = [0, 1]; // set for stereo output. if you want mono output, format without [ ] brackets ex. ~audioOutput = 0;
 
 ~maxEnvelopeVolume = 1; // set this value between 0 and 1 to allow more headroom for high resonance sweeps and lots of samples. you can compensate for a lower volume by turning up the output on your audio interface
 
-~volumeDefault = 1; // this controls the default volumes of all the tracks (0 is silent and 1 is all the way up)
+~volumeDefault = 0.5; // this controls the default volumes of all the tracks (0 is silent and 1 is all the way up)
+
+~volumeMixerHoldTime = nil; //sets how long (in seconds) you must hold down the two arc selection matrix buttons
+//to be able to hold the volume mixer on. If set to 'nil' holding volume mixer on will be disabled
 
 //*************************************************\\
 
@@ -163,6 +166,8 @@ s.waitForBoot({
 
 	~triggerTimeResetImpulseBusses = [Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1)];
 
+	~volumeMixerHeldStatus = 0;
+
 	OSCFunc.newMatching( //grid functionality
 		{ arg message, time, addr, recvPort;
 			//message 1 = x axis (columns 0-15) message 2 = y axis (rows 0-7)
@@ -209,24 +214,25 @@ s.waitForBoot({
 
 			};
 
-			switch(message[2], 0, {
-				evenRow.value(0, message[1], message[2], message[3]);
-			}, 1, {
-				oddRow.value(0, message[1], message[2], message[3]);
-			}, 2, {
-				evenRow.value(1, message[1], message[2], message[3]);
-			}, 3, {
-				oddRow.value(1, message[1], message[2], message[3]);
-			}, 4, {
-				evenRow.value(2, message[1], message[2], message[3]);
-			}, 5, {
-				oddRow.value(2, message[1], message[2], message[3]);
-			}, 6, {
-				evenRow.value(3, message[1], message[2], message[3]);
-			}, 7, {
-				oddRow.value(3, message[1], message[2], message[3]);
+			if(addr.port == ~gridDevicePort, {
+				switch(message[2], 0, {
+					evenRow.value(0, message[1], message[2], message[3]);
+				}, 1, {
+					oddRow.value(0, message[1], message[2], message[3]);
+				}, 2, {
+					evenRow.value(1, message[1], message[2], message[3]);
+				}, 3, {
+					oddRow.value(1, message[1], message[2], message[3]);
+				}, 4, {
+					evenRow.value(2, message[1], message[2], message[3]);
+				}, 5, {
+					oddRow.value(2, message[1], message[2], message[3]);
+				}, 6, {
+					evenRow.value(3, message[1], message[2], message[3]);
+				}, 7, {
+					oddRow.value(3, message[1], message[2], message[3]);
+				});
 			});
-
 
 	}, "/monome/grid/key");
 
@@ -261,7 +267,7 @@ s.waitForBoot({
 
 					postln("Stoping Playback of Sample" + sampleNumber);
 				}, {
-					~playbackSynth[sampleNumber].set(\rate, ~storedPlaybackRate[0]);
+					~playbackSynth[sampleNumber].set(\rate, ~storedPlaybackRate[sampleNumber]);
 
 					~playbackStatusIndicator[sampleNumber] = 1;
 
@@ -335,12 +341,15 @@ s.waitForBoot({
 					});
 
 					~arcSelectionLeft[0] = 1; //one means true or is held
+
+					if(~volumeMixerHeldStatus == 0, {
 					~arcSelectionLeft[1] = matrixIndexes[sampleNumber][messageOneOffset];
 
 					~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue);
 					~updateArcLeds.value(1, ~pairs[~arcSelectionLeft[1]][1].arcLedValue);
 
 					postln("Selection Left Index =" + ~arcSelectionLeft[1]);
+					});
 
 				}, 1, {
 
@@ -350,11 +359,28 @@ s.waitForBoot({
 					//this is the hidden volume mixer area
 
 					for(0, 3, {arg i;
-						~updateArcLeds.value(i, ~volumes[i].arcLedValue);
+						~updateArcLeds.value(i, ~volumes[i].arcLedValue, 5);
 					});
 
 					postln("Selection Right Index =" + ~arcSelectionRight[1]);
 					postln("Displaying Master Volume Mixer");
+
+					if(~volumeMixerHoldTime.isNil, { }, {
+					switch(~volumeMixerHeldStatus, 0, { //holding volume mixer on
+
+						AppClock.clear;
+						AppClock.sched(~volumeMixerHoldTime , { //need to cancel this out if it gets rescheudled!!!!!
+							if(~arcSelectionRight[0] == 1, { //if right selection is still held down
+								~volumeMixerHeldStatus = 1;
+								("Holding Volume Mixer On").postln;
+							})
+
+						});
+					}, 1, {
+						~volumeMixerHeldStatus = 0;
+						("Volume Mixer is not being held").postln;
+					});
+					});
 
 				});
 
@@ -378,7 +404,11 @@ s.waitForBoot({
 					//postln("Releasing Selection Left with Index" + ~arcSelectionLeft[1]);
 				});
 
+
 				if(~arcSelectionRight[0] == 1 && ~arcSelectionRight[1] == matrixIndexes[sampleNumber][messageOneOffset], {
+
+					if(~volumeMixerHeldStatus == 0, {
+
 					~arcSelectionRight[0] = 0;
 
 					~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue); //display arc selection parameters instead of volumes
@@ -388,6 +418,7 @@ s.waitForBoot({
 
 					postln("Hiding Master Volume Mixer");
 					//postln("Releasing Selection Right with Index" + ~arcSelectionRight[1]);
+					})
 				});
 
 			});
@@ -560,36 +591,38 @@ s.waitForBoot({
 	OSCFunc.newMatching( // arc funtionality
 		{ arg message, time, addr, recvPort;
 
-			var arcFunctions = {arg name, messageOne, messageTwo;
+			var arcFunctions = {arg name, messageOne, messageTwo, ledLevel = 15;
 				name.change(messageTwo);
 				name.sendChange;
-				~updateArcLeds.value(messageOne, name.arcLedValue);
+				~updateArcLeds.value(messageOne, name.arcLedValue, ledLevel);
 			};
 
-			switch(~arcSelectionRight[0], 1, { //hidden volume mixer
+			if(addr.port == ~arcDevicePort, {
+				switch(~arcSelectionRight[0], 1, { //hidden volume mixer
 
-				switch(message[1], 0, {
-					arcFunctions.value(~volumes[0], 0, message[2]);
-				}, 1, {
-					arcFunctions.value(~volumes[1], 1, message[2]);
-				}, 2, {
-					arcFunctions.value(~volumes[2], 2, message[2]);
-				}, 3, {
-					arcFunctions.value(~volumes[3], 3, message[2]);
+					switch(message[1], 0, {
+						arcFunctions.value(~volumes[0], 0, message[2], 5);
+					}, 1, {
+						arcFunctions.value(~volumes[1], 1, message[2], 5);
+					}, 2, {
+						arcFunctions.value(~volumes[2], 2, message[2], 5);
+					}, 3, {
+						arcFunctions.value(~volumes[3], 3, message[2], 5);
+					});
+
+				}, 0, {
+
+					switch(message[1], 0, {
+						arcFunctions.value(~pairs[~arcSelectionLeft[1]][0], 0, message[2]);
+					}, 1, {
+						arcFunctions.value(~pairs[~arcSelectionLeft[1]][1], 1, message[2]);
+					}, 2, {
+						arcFunctions.value(~pairs[~arcSelectionRight[1]][0], 2, message[2]);
+					}, 3, {
+						arcFunctions.value(~pairs[~arcSelectionRight[1]][1], 3, message[2]);
+					});
+
 				});
-
-			}, 0, {
-
-				switch(message[1], 0, {
-					arcFunctions.value(~pairs[~arcSelectionLeft[1]][0], 0, message[2]);
-				}, 1, {
-					arcFunctions.value(~pairs[~arcSelectionLeft[1]][1], 1, message[2]);
-				}, 2, {
-					arcFunctions.value(~pairs[~arcSelectionRight[1]][0], 2, message[2]);
-				}, 3, {
-					arcFunctions.value(~pairs[~arcSelectionRight[1]][1], 3, message[2]);
-				});
-
 			});
 
 	}, "/monome/enc/delta");
@@ -656,10 +689,10 @@ s.waitForBoot({
 
 	};
 
-	~updateArcLeds = {arg encoderNumber, ledValue;
+	~updateArcLeds = {arg encoderNumber, ledValue, ledLevel = 15;
 
 		var encoderTemporaryArray = Array.fill(64, { arg index;
-			if(index <= ledValue, { 15 }, { 0 });
+			if(index <= ledValue, { ledLevel }, { 0 });
 		});
 
 		~arc4.ringmap(encoderNumber, encoderTemporaryArray);
