@@ -20,6 +20,9 @@ For me I use the command 'jackd -d alsa -d hw:Ultra' to get my Fast-Track Ultra 
 There are some parameters that can be set by the user.  
 These parameters are designated and explained in the user control area  
 which is desiginated at the top of the code in SuperCollider.  
+
+If you would like to use Animalation without an Arc 4, you can set
+an option in the user control area to disable all arc features.
   
   
 Preperation:  
@@ -37,7 +40,7 @@ Under the Interpreter options, we need to include the MonoM folder and
 the Animalation folder.  
 To include these, click on the green plus symbol next to the include  
 text box. This will allow you to browse to the locations of the folders  
-and add them.  
+
 You can click ok, then click ok in the pop up box.  
 Now you need to recompile the class library. This is simple.  
 You can either close and reopen SuperCollider, or go to   
@@ -205,7 +208,6 @@ I can release one of the keys and the volume mixer will be exited.
   
 Long-Term Goals:  
   
-Create version usable without the arc 4.  
 Create version for grid 64 and 256.  
 Redo length formula so length of inter-sample loop is consistent no matter the starting point.  
 Polyphonic trigger recording.  
