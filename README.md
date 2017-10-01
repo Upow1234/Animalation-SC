@@ -200,8 +200,13 @@ Then I press and hold the key of the currently selected parameter pair
 for the right side of the arc (currently that is (4, 11).  
 Now, I can adjust the volume of track 3 by rotating encoder 3.  
 I can release one of the keys and the volume mixer will be exited.  
-  
-  
+
+The volume mixer can be held on after the left and right arc selection 
+buttons are held down for a specified period of time by changing the 
+~volumeMixerHoldTime user option from nil to a number. For example,
+changing ~volumeMixerHoldTime to 1 will cause the volume mixer
+to be held on after holding the left and right arc selection 
+buttons for 1 second.
   
 Long-Term Goals:  
   
