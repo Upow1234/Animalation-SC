@@ -209,7 +209,10 @@ buttons are held down for a specified period of time by changing the
 ~volumeMixerHoldTime user option from nil to a number. For example,
 changing ~volumeMixerHoldTime to 1 will cause the volume mixer
 to be held on after holding the left and right arc selection 
-buttons for 1 second.
+buttons for 1 second. 
+
+To leave the held volume mixer press the left and right arc selection 
+buttons again.
   
 Long-Term Goals:  
   

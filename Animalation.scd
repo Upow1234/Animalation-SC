@@ -408,36 +408,26 @@ s.waitForBoot({
 						//postln("Releasing Selection Left with Index" + ~arcSelectionLeft[1]);
 					});
 
+
 					if(~arcSelectionRight[0] == 1 && ~arcSelectionRight[1] == matrixIndexes[sampleNumber][messageOneOffset], {
-						~arcSelectionRight[0] = 0;
 
-						~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue); //display arc selection parameters instead of volumes
-						~updateArcLeds.value(1, ~pairs[~arcSelectionLeft[1]][1].arcLedValue);
-						~updateArcLeds.value(2, ~pairs[~arcSelectionRight[1]][0].arcLedValue);
-						~updateArcLeds.value(3, ~pairs[~arcSelectionRight[1]][1].arcLedValue);
+						if(~volumeMixerHeldStatus == 0, {
 
+							~arcSelectionRight[0] = 0;
 
-						if(~arcSelectionRight[0] == 1 && ~arcSelectionRight[1] == matrixIndexes[sampleNumber][messageOneOffset], {
-
-							if(~volumeMixerHeldStatus == 0, {
-
-								~arcSelectionRight[0] = 0;
-
-								postln("Hiding Master Volume Mixer");
-								//postln("Releasing Selection Right with Index" + ~arcSelectionRight[1]);
-							});
-
+							~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue); //display arc selection parameters instead of volumes
+							~updateArcLeds.value(1, ~pairs[~arcSelectionLeft[1]][1].arcLedValue);
+							~updateArcLeds.value(2, ~pairs[~arcSelectionRight[1]][0].arcLedValue);
+							~updateArcLeds.value(3, ~pairs[~arcSelectionRight[1]][1].arcLedValue);
 
 							postln("Hiding Master Volume Mixer");
 							//postln("Releasing Selection Right with Index" + ~arcSelectionRight[1]);
 						})
-
 					});
 
 				});
 
 			});
-
 		});
 
 		if(messageOne == 15 && messageThree == 1, { //sample record button
