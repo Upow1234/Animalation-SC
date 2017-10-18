@@ -20,12 +20,12 @@
 
 ~volumeDefault = 0.5; // this controls the default volumes of all the tracks (0 is silent and 1 is all the way up)
 
-~volumeMixerHoldTime = 1; //sets how long (in seconds) you must hold down the two arc selection matrix buttons
+~volumeMixerHoldTime = nil; //sets how long (in seconds) you must hold down the two arc selection matrix buttons
 //to be able to hold the volume mixer on. If set to 'nil' holding volume mixer on will be disabled
 
 //*************************************************\\
 
-s.reboot; //releases all busses for reallocation
+s.reboot; //releases all busses for reallocation...let's find a better way to do this
 
 s = Server.local;
 
@@ -109,8 +109,144 @@ SynthDef("Trigger_Time_Reset_Impulses", {arg outputBus;
 
 }).add;
 
+~controlRowLedDefaultValues = [7, 3, 7, 3, 7, 3, 7, 3, 0, 3, 0, 0, 0, 3, 0, 3];
 
 s.waitForBoot({
+
+	var initialize;
+
+	initialize = {
+
+		~updateGridLeds = {
+
+			var x, y, tempGridLedsLeft, tempGridLedsRight, gridWidth;
+
+			gridWidth = 16;
+
+			tempGridLedsLeft = Array.fill(64, 0);
+			tempGridLedsRight = Array.fill(64, 0);
+
+			for(0, 7, { arg y;
+				for(0, 15, { arg x;
+
+					var index16 = x + (y * gridWidth);
+					var index8 = x + (y * 8);
+
+					if(x < 8, {
+						tempGridLedsLeft[index8] = ~gridLeds[index16];
+					}, {
+						tempGridLedsRight[index8 - 8] = ~gridLeds[index16];
+					});
+
+				});
+			});
+
+			~grid128.levmap(0, 0, tempGridLedsLeft);
+			~grid128.levmap(8, 0, tempGridLedsRight);
+
+		};
+
+		//initialize control row leds on grid
+		forBy(0, 6, 2, {arg y;
+			for(0, 15, {arg x;
+
+				~grid128.levset(x, y, ~controlRowLedDefaultValues[x]);
+				~gridLeds[x + (y * 16)] = ~controlRowLedDefaultValues[x];
+
+			});
+
+			//initialize rate led to speed 1 (column 4)
+			~grid128.levset(4, y, 15);
+			~gridLeds[4 + (y * 16)] = 15;
+
+		});
+
+		//initialize faint play row leds
+		forBy(1, 7, 2, {arg rows;
+			for(0, 15, {arg columns;
+				~gridLeds[columns + (rows * 16)] = 1;
+			});
+		});
+
+		if(~arcDevicePort.notNil, {
+
+			~gridLeds[10 + (0 * 16)] = 15; //initialize arc selection leds
+			~gridLeds[11 + (0 * 16)] = 7;
+
+			OSCFunc.newMatching( // arc funtionality
+				{ arg message, time, addr, recvPort;
+
+					var arcFunctions = {arg name, messageOne, messageTwo, ledLevel = 15;
+						name.change(messageTwo);
+						name.sendChange;
+						~updateArcLeds.value(messageOne, name.arcLedValue, ledLevel);
+					};
+
+					if(addr.port == ~arcDevicePort, {
+						switch(~arcSelectionRight[0], 1, { //hidden volume mixer
+
+							switch(message[1], 0, {
+								arcFunctions.value(~volumes[0], 0, message[2], 5);
+							}, 1, {
+								arcFunctions.value(~volumes[1], 1, message[2], 5);
+							}, 2, {
+								arcFunctions.value(~volumes[2], 2, message[2], 5);
+							}, 3, {
+								arcFunctions.value(~volumes[3], 3, message[2], 5);
+							});
+
+						}, 0, {
+
+							switch(message[1], 0, {
+								arcFunctions.value(~pairs[~arcSelectionLeft[1]][0], 0, message[2]);
+							}, 1, {
+								arcFunctions.value(~pairs[~arcSelectionLeft[1]][1], 1, message[2]);
+							}, 2, {
+								arcFunctions.value(~pairs[~arcSelectionRight[1]][0], 2, message[2]);
+							}, 3, {
+								arcFunctions.value(~pairs[~arcSelectionRight[1]][1], 3, message[2]);
+							});
+
+						});
+					});
+
+			}, "/monome/enc/delta");
+
+			~pairs = [ //changes accessable by the arc
+
+				[ArcParameter.new("Sample Zero Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[0], \cutoff, 0), ArcParameter.new("Sample Zero Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[0], \resonance, 0)], [ArcParameter.new("Sample Zero FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[0], \fmSpeed, 0), ArcParameter.new("Sample Zero FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[0], \fmDepth, 0)], [ArcParameter.new("Sample Zero Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[0], \loopStart, 0), ArcParameter.new("Sample Zero Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[0], \loopLength, 0)],
+
+				[ArcParameter.new("Sample One Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[1], \cutoff, 0), ArcParameter.new("Sample One Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[1], \resonance, 0)], [ArcParameter.new("Sample One FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[1], \fmSpeed, 0), ArcParameter.new("Sample One FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[1], \fmDepth, 0)], [ArcParameter.new("Sample One Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[1], \loopStart, 0), ArcParameter.new("Sample One Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[1], \loopLength, 0)],
+
+				[ArcParameter.new("Sample Two Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[2], \cutoff, 0), ArcParameter.new("Sample Two Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[2], \resonance, 0)], [ArcParameter.new("Sample Two FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[2], \fmSpeed, 0), ArcParameter.new("Sample Two FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[2], \fmDepth, 0)], [ArcParameter.new("Sample Two Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[2], \loopStart, 0), ArcParameter.new("Sample Two Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[2], \loopLength, 0)],
+
+				[ArcParameter.new("Sample Three Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[3], \cutoff, 0), ArcParameter.new("Sample Three Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[3], \resonance, 0)], [ArcParameter.new("Sample Three FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[3], \fmSpeed, 0), ArcParameter.new("Sample Three FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[3], \fmDepth, 0)], [ArcParameter.new("Sample Three Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[3], \loopStart, 0), ArcParameter.new("Sample Three Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[3], \loopLength, 0)],
+
+			];
+
+			//master volume parameters
+
+			~volumes = [ArcParameter.new("Sample Zero Volume", 0, 1, 100, 2, ~volumeDefault, ~playbackSynth[0], \volume, 0), ArcParameter.new("Sample One Volume", 0, 1, 100, 2, ~volumeDefault, ~playbackSynth[1], \volume, 0), ArcParameter.new("Sample Two Volume", 0, 1, 100, 2, ~volumeDefault, ~playbackSynth[2], \volume, 0), ArcParameter.new("Sample Three Volume", 0, 1, 100, 2, ~volumeDefault, ~playbackSynth[3], \volume, 0)];
+
+			~updateArcLeds = {arg encoderNumber, ledValue, ledLevel = 15;
+
+				var encoderTemporaryArray = Array.fill(64, { arg index;
+					if(index <= ledValue, { ledLevel }, { 0 });
+				});
+
+				~arc4.ringmap(encoderNumber, encoderTemporaryArray);
+
+			};
+
+			//initialize arc leds
+
+			~updateArcLeds.value(0, ~pairs[0][0].arcLedValue);
+			~updateArcLeds.value(1, ~pairs[0][1].arcLedValue);
+			~updateArcLeds.value(2, ~pairs[1][0].arcLedValue);
+			~updateArcLeds.value(3, ~pairs[1][1].arcLedValue);
+		});
+
+	};
 
 	~grid128.usePort(~gridDevicePort);
 
@@ -145,10 +281,8 @@ s.waitForBoot({
 	~gridLeds = Array.fill(128, 0);
 	~arcLeds = [Array.fill(64, 0), Array.fill(64, 0), Array.fill(64, 0), Array.fill(64, 0)];
 
-	~controlRowLedDefaultValues = [7, 3, 7, 3, 7, 3, 7, 3, 0, 3, 0, 0, 0, 3, 0, 3];
-
 	~playRowLedBus = [Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1), Bus.control(s, 1)];
-	~currentPlayLed = [0, 0, 0, 0];
+	~currentPlayLed = [-1, -1, -1, -1];
 
 	~triggerRecordingStatusIndicator = [0, 0, 0, 0];
 
@@ -324,111 +458,12 @@ s.waitForBoot({
 
 	};
 
+	~nonRecordableButtons = nil;
 
-	~nonRecordableButtons = {arg sampleNumber, messageOne, messageTwo, messageThree;
+	~nonRecordableButtons = ~nonRecordableButtons.addFunc {arg sampleNumber, messageOne, messageTwo, messageThree;
+		//the arc control selection matrix is the reason I have not gotten rid of the messageThree arguments
 
-		var matrixIndexes = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]];
 		var ledOffsets = [0, 2, 4, 6];
-
-		if(~arcDevicePort.notNil, {
-			if((messageOne == 12) || (messageOne == 11) || (messageOne == 10), { //arc control selection matrix
-
-				var messageOneOffset = messageOne - 10;
-				var matrixLedLocations = [[10, 0], [11, 0], [12, 0], [10, 2], [11, 2], [12, 2], [10, 4], [11, 4], [12, 4], [10, 6], [11, 6], [12, 6]];
-
-				if (messageThree == 1, {
-
-					switch(~arcSelectionLeft[0], 0,{
-
-						if(matrixIndexes[sampleNumber][messageOneOffset] == ~arcSelectionRight[1], { //if you try to select slot one where slot two already is
-							~arcSelectionRight[1] = matrixIndexes[sampleNumber][(messageOneOffset + 1) % 3];
-						});
-
-						~arcSelectionLeft[0] = 1; //one means true or is held
-
-						if(~volumeMixerHeldStatus == 0, {
-							~arcSelectionLeft[1] = matrixIndexes[sampleNumber][messageOneOffset];
-
-							~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue);
-							~updateArcLeds.value(1, ~pairs[~arcSelectionLeft[1]][1].arcLedValue);
-
-							postln("Selection Left Index =" + ~arcSelectionLeft[1]);
-						});
-
-					}, 1, {
-
-						~arcSelectionRight[0] = 1;
-						~arcSelectionRight[1] = matrixIndexes[sampleNumber][messageOneOffset];
-
-						//this is the hidden volume mixer area
-
-						for(0, 3, {arg i;
-							~updateArcLeds.value(i, ~volumes[i].arcLedValue, 5);
-						});
-
-						postln("Selection Right Index =" + ~arcSelectionRight[1]);
-						postln("Displaying Master Volume Mixer");
-
-						if(~volumeMixerHoldTime.notNil, {
-							switch(~volumeMixerHeldStatus, 0, { //holding volume mixer on
-
-								AppClock.clear;
-								AppClock.sched(~volumeMixerHoldTime , { //need to cancel this out if it gets rescheudled!!!!!
-									if(~arcSelectionRight[0] == 1, { //if right selection is still held down
-										~volumeMixerHeldStatus = 1;
-										("Holding Volume Mixer On").postln;
-									})
-
-								});
-							}, 1, {
-								~volumeMixerHeldStatus = 0;
-								("Volume Mixer is not being held").postln;
-							});
-						});
-
-					});
-
-					for(10, 12, {arg x; //clear and reset arc selection matrix leds
-						forBy(0, 6, 2, {arg y;
-							~gridLeds[x + (y * 16)] = 0;
-						});
-					});
-
-					//masked x + (y * width)
-					~gridLeds[matrixLedLocations[~arcSelectionLeft[1]][0] + (matrixLedLocations[~arcSelectionLeft[1]][1] * 16)] = 15;
-					~gridLeds[matrixLedLocations[~arcSelectionRight[1]][0] + (matrixLedLocations[~arcSelectionRight[1]][1] * 16)] = 7;
-					~updateGridLeds.value;
-
-				});
-
-				if(messageThree == 0, {
-
-					if(~arcSelectionLeft[0] == 1 && ~arcSelectionLeft[1] == matrixIndexes[sampleNumber][messageOneOffset], {
-						~arcSelectionLeft[0] = 0;
-						//postln("Releasing Selection Left with Index" + ~arcSelectionLeft[1]);
-					});
-
-
-					if(~arcSelectionRight[0] == 1 && ~arcSelectionRight[1] == matrixIndexes[sampleNumber][messageOneOffset], {
-
-						if(~volumeMixerHeldStatus == 0, {
-
-							~arcSelectionRight[0] = 0;
-
-							~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue); //display arc selection parameters instead of volumes
-							~updateArcLeds.value(1, ~pairs[~arcSelectionLeft[1]][1].arcLedValue);
-							~updateArcLeds.value(2, ~pairs[~arcSelectionRight[1]][0].arcLedValue);
-							~updateArcLeds.value(3, ~pairs[~arcSelectionRight[1]][1].arcLedValue);
-
-							postln("Hiding Master Volume Mixer");
-							//postln("Releasing Selection Right with Index" + ~arcSelectionRight[1]);
-						})
-					});
-
-				});
-
-			});
-		});
 
 		if(messageOne == 15 && messageThree == 1, { //sample record button
 
@@ -591,48 +626,110 @@ s.waitForBoot({
 
 	}; //end non recording
 
-
 	if(~arcDevicePort.notNil, {
+		~nonRecordableButtons = ~nonRecordableButtons.addFunc{arg sampleNumber, messageOne, messageTwo, messageThree;
 
-		OSCFunc.newMatching( // arc funtionality
-			{ arg message, time, addr, recvPort;
+			var matrixIndexes = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]];
 
-				var arcFunctions = {arg name, messageOne, messageTwo, ledLevel = 15;
-					name.change(messageTwo);
-					name.sendChange;
-					~updateArcLeds.value(messageOne, name.arcLedValue, ledLevel);
-				};
+			if((messageOne == 12) || (messageOne == 11) || (messageOne == 10), { //arc control selection matrix
 
-				if(addr.port == ~arcDevicePort, {
-					switch(~arcSelectionRight[0], 1, { //hidden volume mixer
+				var messageOneOffset = messageOne - 10;
+				var matrixLedLocations = [[10, 0], [11, 0], [12, 0], [10, 2], [11, 2], [12, 2], [10, 4], [11, 4], [12, 4], [10, 6], [11, 6], [12, 6]];
 
-						switch(message[1], 0, {
-							arcFunctions.value(~volumes[0], 0, message[2], 5);
-						}, 1, {
-							arcFunctions.value(~volumes[1], 1, message[2], 5);
-						}, 2, {
-							arcFunctions.value(~volumes[2], 2, message[2], 5);
-						}, 3, {
-							arcFunctions.value(~volumes[3], 3, message[2], 5);
+				if (messageThree == 1, {
+
+					switch(~arcSelectionLeft[0], 0,{
+
+						if(matrixIndexes[sampleNumber][messageOneOffset] == ~arcSelectionRight[1], { //if you try to select slot one where slot two already is
+							~arcSelectionRight[1] = matrixIndexes[sampleNumber][(messageOneOffset + 1) % 3];
 						});
 
-					}, 0, {
+						~arcSelectionLeft[0] = 1; //one means true or is held
 
-						switch(message[1], 0, {
-							arcFunctions.value(~pairs[~arcSelectionLeft[1]][0], 0, message[2]);
-						}, 1, {
-							arcFunctions.value(~pairs[~arcSelectionLeft[1]][1], 1, message[2]);
-						}, 2, {
-							arcFunctions.value(~pairs[~arcSelectionRight[1]][0], 2, message[2]);
-						}, 3, {
-							arcFunctions.value(~pairs[~arcSelectionRight[1]][1], 3, message[2]);
+						if(~volumeMixerHeldStatus == 0, {
+							~arcSelectionLeft[1] = matrixIndexes[sampleNumber][messageOneOffset];
+
+							~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue);
+							~updateArcLeds.value(1, ~pairs[~arcSelectionLeft[1]][1].arcLedValue);
+
+							postln("Selection Left Index =" + ~arcSelectionLeft[1]);
+						});
+
+					}, 1, {
+
+						~arcSelectionRight[0] = 1;
+						~arcSelectionRight[1] = matrixIndexes[sampleNumber][messageOneOffset];
+
+						//this is the hidden volume mixer area
+
+						for(0, 3, {arg i;
+							~updateArcLeds.value(i, ~volumes[i].arcLedValue, 5);
+						});
+
+						postln("Selection Right Index =" + ~arcSelectionRight[1]);
+						postln("Displaying Master Volume Mixer");
+
+						if(~volumeMixerHoldTime.notNil, {
+							switch(~volumeMixerHeldStatus, 0, { //holding volume mixer on
+
+								AppClock.clear;
+								AppClock.sched(~volumeMixerHoldTime , {
+									if(~arcSelectionRight[0] == 1, { //if right selection is still held down
+										~volumeMixerHeldStatus = 1;
+										("Holding Volume Mixer On").postln;
+									})
+
+								});
+							}, 1, {
+								~volumeMixerHeldStatus = 0;
+								("Volume Mixer is not being held").postln;
+							});
 						});
 
 					});
+
+					for(10, 12, {arg x; //clear and reset arc selection matrix leds
+						forBy(0, 6, 2, {arg y;
+							~gridLeds[x + (y * 16)] = 0;
+						});
+					});
+
+					//masked x + (y * width)
+					~gridLeds[matrixLedLocations[~arcSelectionLeft[1]][0] + (matrixLedLocations[~arcSelectionLeft[1]][1] * 16)] = 15;
+					~gridLeds[matrixLedLocations[~arcSelectionRight[1]][0] + (matrixLedLocations[~arcSelectionRight[1]][1] * 16)] = 7;
+					~updateGridLeds.value;
+
 				});
 
-		}, "/monome/enc/delta");
+				if(messageThree == 0, {
 
+					if(~arcSelectionLeft[0] == 1 && ~arcSelectionLeft[1] == matrixIndexes[sampleNumber][messageOneOffset], {
+						~arcSelectionLeft[0] = 0;
+						//postln("Releasing Selection Left with Index" + ~arcSelectionLeft[1]);
+					});
+
+
+					if(~arcSelectionRight[0] == 1 && ~arcSelectionRight[1] == matrixIndexes[sampleNumber][messageOneOffset], {
+
+						if(~volumeMixerHeldStatus == 0, {
+
+							~arcSelectionRight[0] = 0;
+
+							~updateArcLeds.value(0, ~pairs[~arcSelectionLeft[1]][0].arcLedValue); //display arc selection parameters instead of volumes
+							~updateArcLeds.value(1, ~pairs[~arcSelectionLeft[1]][1].arcLedValue);
+							~updateArcLeds.value(2, ~pairs[~arcSelectionRight[1]][0].arcLedValue);
+							~updateArcLeds.value(3, ~pairs[~arcSelectionRight[1]][1].arcLedValue);
+
+							postln("Hiding Master Volume Mixer");
+							//postln("Releasing Selection Right with Index" + ~arcSelectionRight[1]);
+						})
+					});
+
+				});
+
+			});
+
+		};
 	});
 
 	//create playback synths
@@ -652,92 +749,7 @@ s.waitForBoot({
 
 	postln("Creating Sample Playback Synths 0 - 3");
 
-	if(~arcDevicePort.notNil, {
-		~pairs = [
-
-			[ArcParameter.new("Sample Zero Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[0], \cutoff, 0), ArcParameter.new("Sample Zero Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[0], \resonance, 0)], [ArcParameter.new("Sample Zero FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[0], \fmSpeed, 0), ArcParameter.new("Sample Zero FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[0], \fmDepth, 0)], [ArcParameter.new("Sample Zero Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[0], \loopStart, 0), ArcParameter.new("Sample Zero Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[0], \loopLength, 0)],
-
-			[ArcParameter.new("Sample One Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[1], \cutoff, 0), ArcParameter.new("Sample One Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[1], \resonance, 0)], [ArcParameter.new("Sample One FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[1], \fmSpeed, 0), ArcParameter.new("Sample One FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[1], \fmDepth, 0)], [ArcParameter.new("Sample One Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[1], \loopStart, 0), ArcParameter.new("Sample One Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[1], \loopLength, 0)],
-
-			[ArcParameter.new("Sample Two Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[2], \cutoff, 0), ArcParameter.new("Sample Two Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[2], \resonance, 0)], [ArcParameter.new("Sample Two FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[2], \fmSpeed, 0), ArcParameter.new("Sample Two FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[2], \fmDepth, 0)], [ArcParameter.new("Sample Two Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[2], \loopStart, 0), ArcParameter.new("Sample Two Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[2], \loopLength, 0)],
-
-			[ArcParameter.new("Sample Three Cutoff", 20, 20000, 1, 2, 20000, ~playbackSynth[3], \cutoff, 0), ArcParameter.new("Sample Three Resonance", 0.01, 1, 500, 1, 1, ~playbackSynth[3], \resonance, 0)], [ArcParameter.new("Sample Three FM Speed", 0, 500, 5, 2, 0, ~playbackSynth[3], \fmSpeed, 0), ArcParameter.new("Sample Three FM Depth", 0, 20, 25, 2, 0, ~playbackSynth[3], \fmDepth, 0)], [ArcParameter.new("Sample Three Loop Start", 0, 1, 100, 2, 0, ~playbackSynth[3], \loopStart, 0), ArcParameter.new("Sample Three Loop End", 0.001, 1, 100, 2, 1, ~playbackSynth[3], \loopLength, 0)],
-
-		];
-
-		//master volume parameters
-
-		~volumes = [ArcParameter.new("Sample Zero Volume", 0, 1, 100, 2, ~volumeDefault, ~playbackSynth[0], \volume, 0), ArcParameter.new("Sample One Volume", 0, 1, 100, 2, ~volumeDefault, ~playbackSynth[1], \volume, 0), ArcParameter.new("Sample Two Volume", 0, 1, 100, 2, ~volumeDefault, ~playbackSynth[2], \volume, 0), ArcParameter.new("Sample Three Volume", 0, 1, 100, 2, ~volumeDefault, ~playbackSynth[3], \volume, 0)];
-
-	});
-
-	~updateGridLeds = {
-
-		var x, y, tempGridLedsLeft, tempGridLedsRight, gridWidth;
-
-		gridWidth = 16;
-
-		tempGridLedsLeft = Array.fill(64, 0);
-		tempGridLedsRight = Array.fill(64, 0);
-
-		for(0, 7, { arg y;
-			for(0, 15, { arg x;
-
-				var index16 = x + (y * gridWidth);
-				var index8 = x + (y * 8);
-
-				if(x < 8, {
-					tempGridLedsLeft[index8] = ~gridLeds[index16];
-				}, {
-					tempGridLedsRight[index8 - 8] = ~gridLeds[index16];
-				});
-
-			});
-		});
-
-		~grid128.levmap(0, 0, tempGridLedsLeft);
-		~grid128.levmap(8, 0, tempGridLedsRight);
-
-	};
-
-	if(~arcDevicePort.notNil, {
-		~updateArcLeds = {arg encoderNumber, ledValue, ledLevel = 15;
-
-			var encoderTemporaryArray = Array.fill(64, { arg index;
-				if(index <= ledValue, { ledLevel }, { 0 });
-			});
-
-			~arc4.ringmap(encoderNumber, encoderTemporaryArray);
-
-		};
-	});
-
-	//initialize control row leds
-	forBy(0, 6, 2, {arg y;
-		for(0, 15, {arg x;
-
-			~grid128.levset(x, y, ~controlRowLedDefaultValues[x]);
-			~gridLeds[x + (y * 16)] = ~controlRowLedDefaultValues[x];
-
-		});
-
-		//initialize rate led to speed 1 (column 4)
-		~grid128.levset(4, y, 15);
-		~gridLeds[4 + (y * 16)] = 15;
-
-	});
-
-	if(~arcDevicePort.notNil, {
-		~gridLeds[10 + (0 * 16)] = 15;
-		~gridLeds[11 + (0 * 16)] = 7;
-
-		//initialize arc leds
-
-		~updateArcLeds.value(0, ~pairs[0][0].arcLedValue);
-		~updateArcLeds.value(1, ~pairs[0][1].arcLedValue);
-		~updateArcLeds.value(2, ~pairs[1][0].arcLedValue);
-		~updateArcLeds.value(3, ~pairs[1][1].arcLedValue);
-	});
+	initialize.value(); //runs initialization function
 
 	//trigger playback functions
 
@@ -794,7 +806,6 @@ s.waitForBoot({
 	});
 
 	~playRowLedMonitor.play;
-
 
 }); //end wait for boot
 
