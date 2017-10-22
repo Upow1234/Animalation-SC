@@ -6,22 +6,24 @@
 // enter the numbers you see in the post window after "Device connected on port: " for both your grid 128 and your arc
 
 ~gridDevicePort = 16139;
-~arcDevicePort = 16159; //set this option to 'nil' to be able to use Animalation without an arc 4
+~arcDevicePort = nil; //16159; //set this option to 'nil' to be able to use Animalation without an arc 4
 
 //  USER OPTIONS AREA  \\
 
 // audio inputs and outputs start counting from 0 (input 1 on your interface is 0, input 2 is 1 etc.)
 
 ~audioInput = 0;
-~maxRecordingLength = 5; // the maximum number of seconds you can record one sample
+~maxRecordingLength = 120; // the maximum number of seconds you can record one sample
 ~audioOutput = [0, 1]; // set for stereo output. if you want mono output, format without [ ] brackets ex. ~audioOutput = 0;
 
 ~maxEnvelopeVolume = 1; // set this value between 0 and 1 to allow more headroom for high resonance sweeps and lots of samples. you can compensate for a lower volume by turning up the output on your audio interface
 
-~volumeDefault = 1; // this controls the default volumes of all the tracks (0 is silent and 1 is all the way up)
+~volumeDefault = 0.5; // this controls the default volumes of all the tracks (0 is silent and 1 is all the way up)
 
 ~volumeMixerHoldTime = nil; //sets how long (in seconds) you must hold down the two arc selection matrix buttons
 //to be able to hold the volume mixer on. If set to 'nil' holding volume mixer on will be disabled
+
+~variBright = 1; //if set to 0, disables varibright
 
 //*************************************************\\
 
@@ -36,7 +38,7 @@ Buffer.freeAll; //essential or buffers start piling up in RAM
 
 SynthDef.new("Recording/Playback_Reset_Trigger", { arg destination;
 
-	FreeSelf.kr(Impulse.kr(0)); //is this necessary? i'm guessing so...
+	FreeSelf.kr(Impulse.kr(0));
 
 	OffsetOut.ar(destination, Impulse.ar(0));
 
@@ -107,7 +109,11 @@ SynthDef("Trigger_Time_Reset_Impulses", {arg outputBus;
 
 }).add;
 
-~controlRowLedDefaultValues = [7, 3, 7, 3, 7, 3, 7, 3, 0, 3, 0, 0, 0, 3, 0, 3];
+//switch(~variBright, 1, {
+	~controlRowLedDefaultValues = [7, 3, 7, 3, 7, 3, 7, 3, 0, 3, 0, 0, 0, 3, 0, 3];
+//}, 0, {
+//	~controlRowLedDefaultValues = [1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+//});
 
 s.waitForBoot({
 
@@ -115,61 +121,125 @@ s.waitForBoot({
 
 	initialize = {
 
-		~updateGridLeds = {
+		switch(~variBright, 1, {
 
-			var x, y, tempGridLedsLeft, tempGridLedsRight, gridWidth;
+			~updateGridLeds = {
 
-			gridWidth = 16;
+				var x, y, tempGridLedsLeft, tempGridLedsRight, gridWidth;
 
-			tempGridLedsLeft = Array.fill(64, 0);
-			tempGridLedsRight = Array.fill(64, 0);
+				gridWidth = 16;
 
-			for(0, 7, { arg y;
-				for(0, 15, { arg x;
+				tempGridLedsLeft = Array.fill(64, 0);
+				tempGridLedsRight = Array.fill(64, 0);
 
-					var index16 = x + (y * gridWidth);
-					var index8 = x + (y * 8);
+				for(0, 7, { arg y;
+					for(0, 15, { arg x;
 
-					if(x < 8, {
-						tempGridLedsLeft[index8] = ~gridLeds[index16];
-					}, {
-						tempGridLedsRight[index8 - 8] = ~gridLeds[index16];
+						var index16 = x + (y * gridWidth);
+						var index8 = x + (y * 8);
+
+						if(x < 8, {
+							tempGridLedsLeft[index8] = ~gridLeds[index16];
+						}, {
+							tempGridLedsRight[index8 - 8] = ~gridLeds[index16];
+						});
+
 					});
+				});
+
+				~grid128.levmap(0, 0, tempGridLedsLeft);
+				~grid128.levmap(8, 0, tempGridLedsRight);
+
+			};
+
+			//initialize control row leds on grid
+			forBy(0, 6, 2, {arg y;
+				for(0, 15, {arg x;
+
+					~grid128.levset(x, y, ~controlRowLedDefaultValues[x]);
+					~gridLeds[x + (y * 16)] = ~controlRowLedDefaultValues[x];
+
+				});
+
+				//initialize rate led to speed 1 (column 4)
+				~grid128.levset(4, y, 15);
+				~gridLeds[4 + (y * 16)] = 15;
+
+			});
+
+			//initialize faint play row leds
+			forBy(1, 7, 2, {arg rows;
+				for(0, 15, {arg columns;
+					~gridLeds[columns + (rows * 16)] = 1;
+				});
+			});
+
+		}, 0, { //varibright disabled
+
+			//initialize control row leds on grid
+			forBy(0, 6, 2, {arg y;
+				for(0, 15, {arg x;
+
+					~gridLeds[x + (y * 16)] = ~controlRowLedDefaultValues[x];
 
 				});
 			});
 
-			~grid128.levmap(0, 0, tempGridLedsLeft);
-			~grid128.levmap(8, 0, tempGridLedsRight);
+			~updateGridLeds = {
 
-		};
+				var gridWidth;
 
-		//initialize control row leds on grid
-		forBy(0, 6, 2, {arg y;
-			for(0, 15, {arg x;
+				var tempArrayLeft = Array.fill(8, Array.fill(8, 0));
+				var tempArrayRight = Array.fill(8, Array.fill(8, 0));
 
-				~grid128.levset(x, y, ~controlRowLedDefaultValues[x]);
-				~gridLeds[x + (y * 16)] = ~controlRowLedDefaultValues[x];
+				var finalArrayLeft = Array.fill(8, 0);
+				var finalArrayRight = Array.fill(8, 0);
 
-			});
+				gridWidth = 16;
 
-			//initialize rate led to speed 1 (column 4)
-			~grid128.levset(4, y, 15);
-			~gridLeds[4 + (y * 16)] = 15;
+				//need to add rounded values
 
-		});
+				for(0, 7, {arg rows;
 
-		//initialize faint play row leds
-		forBy(1, 7, 2, {arg rows;
-			for(0, 15, {arg columns;
-				~gridLeds[columns + (rows * 16)] = 1;
-			});
+					for(15, 0, {arg columns;
+
+						var roundedBrightness;
+
+						if(~gridLeds[columns + (rows * 16)] > 6, {
+							roundedBrightness = 1;
+						}, {
+							roundedBrightness = 0;
+						});
+
+						if(columns > 7, {
+							tempArrayRight[rows][((columns - 8) * -1) + 7] = roundedBrightness;
+						}, {
+							tempArrayLeft[rows][(columns * -1) + 7] = roundedBrightness;
+						});
+
+					});
+
+					finalArrayLeft[rows] = ~bitmasks.at(tempArrayLeft[rows]);
+					finalArrayRight[rows] = ~bitmasks.at(tempArrayRight[rows]);
+
+				});
+
+				~grid128.ledmap(0, 0, finalArrayLeft);
+				~grid128.ledmap(8, 0, finalArrayRight);
+
+			};
+
 		});
 
 		if(~arcDevicePort.notNil, {
 
-			~gridLeds[10 + (0 * 16)] = 15; //initialize arc selection leds
-			~gridLeds[11 + (0 * 16)] = 7;
+			switch(~variBright, 1, {
+				~gridLeds[10 + (0 * 16)] = 15; //initialize arc selection leds
+				~gridLeds[11 + (0 * 16)] = 7;
+			}, 0, {
+				~gridLeds[10 + (0 * 16)] = 1;
+				~gridLeds[11 + (0 * 16)] = 1;
+			});
 
 			OSCFunc.newMatching( // arc funtionality
 				{ arg message, time, addr, recvPort;
@@ -301,6 +371,15 @@ s.waitForBoot({
 	~triggerTimeResetImpulseBusses = [Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1)];
 
 	~volumeMixerHeldStatus = 0;
+
+	~bitmasks = Dictionary.new; //to convert ~gridLeds array to bitmasks for ledmap for non-varibright
+
+	for(0, 255, {arg i ;
+
+		~bitmasks.put(i.asBinaryDigits, i);
+
+	});
+
 
 	OSCFunc.newMatching( //grid functionality
 		{ arg message, time, addr, recvPort;
