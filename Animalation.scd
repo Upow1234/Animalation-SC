@@ -109,11 +109,7 @@ SynthDef("Trigger_Time_Reset_Impulses", {arg outputBus;
 
 }).add;
 
-//switch(~variBright, 1, {
-	~controlRowLedDefaultValues = [7, 3, 7, 3, 7, 3, 7, 3, 0, 3, 0, 0, 0, 3, 0, 3];
-//}, 0, {
-//	~controlRowLedDefaultValues = [1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-//});
+~controlRowLedDefaultValues = [7, 3, 7, 3, 7, 3, 7, 3, 0, 3, 0, 0, 0, 3, 0, 3];
 
 s.waitForBoot({
 
@@ -196,8 +192,6 @@ s.waitForBoot({
 				var finalArrayRight = Array.fill(8, 0);
 
 				gridWidth = 16;
-
-				//need to add rounded values
 
 				for(0, 7, {arg rows;
 
