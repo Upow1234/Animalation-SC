@@ -220,5 +220,7 @@ Create version for grid 64 and 256.
 Redo length formula so length of inter-sample loop is consistent no matter the starting point.  
 Polyphonic trigger recording.  
 Improve trigger recording timing and accuracy.  
+Removing hardcoding mono input
+Add non-varibright support
   
 There could be a potential runtime bug from using "Recording/Playback_Reset_Trigger" for multiple functions.  

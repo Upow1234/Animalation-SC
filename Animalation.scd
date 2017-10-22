@@ -13,12 +13,12 @@
 // audio inputs and outputs start counting from 0 (input 1 on your interface is 0, input 2 is 1 etc.)
 
 ~audioInput = 0;
-~maxRecordingLength = 120; // the maximum number of seconds you can record one sample
+~maxRecordingLength = 5; // the maximum number of seconds you can record one sample
 ~audioOutput = [0, 1]; // set for stereo output. if you want mono output, format without [ ] brackets ex. ~audioOutput = 0;
 
 ~maxEnvelopeVolume = 1; // set this value between 0 and 1 to allow more headroom for high resonance sweeps and lots of samples. you can compensate for a lower volume by turning up the output on your audio interface
 
-~volumeDefault = 0.5; // this controls the default volumes of all the tracks (0 is silent and 1 is all the way up)
+~volumeDefault = 1; // this controls the default volumes of all the tracks (0 is silent and 1 is all the way up)
 
 ~volumeMixerHoldTime = nil; //sets how long (in seconds) you must hold down the two arc selection matrix buttons
 //to be able to hold the volume mixer on. If set to 'nil' holding volume mixer on will be disabled
@@ -36,7 +36,7 @@ Buffer.freeAll; //essential or buffers start piling up in RAM
 
 SynthDef.new("Recording/Playback_Reset_Trigger", { arg destination;
 
-	FreeSelf.kr(Impulse.kr(0));
+	FreeSelf.kr(Impulse.kr(0)); //is this necessary? i'm guessing so...
 
 	OffsetOut.ar(destination, Impulse.ar(0));
 
@@ -62,17 +62,15 @@ SynthDef.new("Sample_Recording_Synth", { arg rate = 1, sampleBuffer, positionBus
 
 SynthDef.new("Sample_Playback_Synth", { arg rate, sampleBuffer, startValue, lengthValue, restartPhasor = 0, cutoff = 20000, resonance = 1, fmSpeed = 0, fmDepth = 0, loopStart = 0, loopLength = 1, ledPhasorOutput, position = 0, direction = 1, volume, clickStopTrigger, maxEnvelopeVolume;
 
-	var start = startValue;
+	var startLoopPosition = startValue + (lengthValue * loopStart);
 
-	var startLoopPosition = start + (lengthValue * loopStart);
-
-	var end = start + lengthValue;
+	var end = startValue + lengthValue;
 
 	var endLoopPosition = (startLoopPosition + ((end - startLoopPosition) * loopLength));
 
 	var fm = SinOsc.ar(fmSpeed, 0, fmDepth, 1);
 
-	var duckUnit = 0.001;
+	var duckUnit = 0.001; //is this crude?
 
 	var playRowPosition = (startLoopPosition + (((end -startLoopPosition) * loopLength) * position));
 
@@ -259,7 +257,6 @@ s.waitForBoot({
 	~playbackPhasorNewPositionTrigger = [Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1), Bus.audio(s, 1)];
 
 	~currentPlaybackStart = [0, 0, 0, 0]; //stores in frames
-	~currentPlaybackEnd = [48000, 48000, 48000, 48000]; //stores in frames. 1 is just filler.
 
 	~sampleStorageBuffer = [Buffer.alloc(s, s.sampleRate * ~maxRecordingLength, 1), Buffer.alloc(s, s.sampleRate * ~maxRecordingLength, 1), Buffer.alloc(s, s.sampleRate * ~maxRecordingLength, 1), Buffer.alloc(s, s.sampleRate * ~maxRecordingLength, 1)];
 
@@ -474,12 +471,15 @@ s.waitForBoot({
 					~recordingSynth[sampleNumber] = Synth.new("Sample_Recording_Synth", [\rate, 1, \sampleBuffer, ~sampleStorageBuffer[sampleNumber], \positionBusOutput, ~sampleRecordCurrentPosition[sampleNumber], \audioInput, ~audioInput]);
 
 				}, {
+					s.makeBundle(nil, {
+						//retrieves the current position of the recording synth to determine the start point
+						//for the new recording.
+						~sampleRecordCurrentPosition[sampleNumber].get({arg i;
+							~currentPlaybackStart[sampleNumber] = i;
+						});
+						s.sync;
 
-					Synth("Recording/Playback_Reset_Trigger", [\destination, ~retriggerSampleRecordTimer[sampleNumber]]);
-					~recordingSynth[sampleNumber].set(\rate, 1);
-
-					~sampleRecordCurrentPosition[sampleNumber].get({arg i;
-						~currentPlaybackStart[sampleNumber] = i;
+						~recordingSynth[sampleNumber].set(\rate, 1);
 					});
 				});
 
@@ -491,23 +491,35 @@ s.waitForBoot({
 				postln("Recording Sample" + sampleNumber);
 
 			}, 1, {
+				s.makeBundle(nil, {
+					//stops recording by turning phasors rate to 0
+					~recordingSynth[sampleNumber].set(\rate, 0);
+					s.sync;
+					~sampleRecordCurrentPosition[sampleNumber].get({arg i;
 
-				~recordingSynth[sampleNumber].set(\rate, 0);
-				~sampleRecordCurrentPosition[sampleNumber].get({arg i;
-					~currentPlaybackEnd[sampleNumber] = i;
+						if(~currentPlaybackStart[sampleNumber] >= i, {
+							//if wrapping around end of recording buffer
 
-					~playbackSynth[sampleNumber].set(\lengthValue, i - ~currentPlaybackStart[sampleNumber]);
+							~playbackSynth[sampleNumber].set(\startValue, ~currentPlaybackStart[sampleNumber],
+								\lengthValue, (s.sampleRate * ~maxRecordingLength) + (i - ~currentPlaybackStart[sampleNumber])
+							);
+							postln("Sucessfully recorded wrapping around the end of recording buffer on track" + sampleNumber);
+						}, {
+							//normal recording
+							~playbackSynth[sampleNumber].set(\startValue, ~currentPlaybackStart[sampleNumber], \lengthValue, i - ~currentPlaybackStart[sampleNumber]);
 
-				});
 
-				~recordingStatusIndicator[sampleNumber] = 0;
+						}
+						);
 
-				~playbackSynth[sampleNumber].set(\startValue, ~currentPlaybackStart[sampleNumber]);
-
-				Synth("Recording/Playback_Reset_Trigger", [\destination,  ~playbackPhasorNewPositionTrigger[sampleNumber]]);
-
-				Synth("Click_Stop_Trigger", [\destination,  ~clickStopTriggerBus[sampleNumber]]);
-
+					});
+					s.sync;
+					~recordingStatusIndicator[sampleNumber] = 0;
+					Synth("Recording/Playback_Reset_Trigger", [\destination,  ~playbackPhasorNewPositionTrigger[sampleNumber]]);
+					s.sync;
+					Synth("Click_Stop_Trigger", [\destination,  ~clickStopTriggerBus[sampleNumber]]);
+					s.sync;
+				}); //end of make bundle
 				~gridLeds[15 + (ledOffsets[sampleNumber] * 16)] = 3;
 				~updateGridLeds.value;
 
