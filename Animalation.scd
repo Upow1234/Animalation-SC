@@ -1,18 +1,19 @@
 (
-
 //*************************************************\\
 
 // ESSENTIAL TO MAKE YOUR GRID AND ARC WORK WITH THIS PROGRAM:
 // enter the numbers you see in the post window after "Device connected on port: " for both your grid 128 and your arc
 
 ~gridDevicePort = 16139;
-~arcDevicePort = nil; //16159; //set this option to 'nil' to be able to use Animalation without an arc 4
+~arcDevicePort = 16159; //16159; //set this option to 'nil' to be able to use Animalation without an arc 4
 
 //  USER OPTIONS AREA  \\
 
 // audio inputs and outputs start counting from 0 (input 1 on your interface is 0, input 2 is 1 etc.)
 
 ~audioInput = 0;
+~inputHPFfrequency = 100; //sets frequency of HPF on input
+
 ~maxRecordingLength = 120; // the maximum number of seconds you can record one sample
 ~audioOutput = [0, 1]; // set for stereo output. if you want mono output, format without [ ] brackets ex. ~audioOutput = 0;
 
@@ -27,7 +28,7 @@
 
 //*************************************************\\
 
-s.reboot; //releases all busses for reallocation...let's find a better way to do this
+s.reboot; //releases all busses for reallocation
 
 s = Server.local;
 
@@ -56,7 +57,7 @@ SynthDef.new("Sample_Recording_Synth", { arg rate = 1, sampleBuffer, positionBus
 
 	var phasor = Phasor.ar(0, rate, 0, BufFrames.kr(sampleBuffer), 0);
 
-	var recording = BufWr.ar(SoundIn.ar(audioInput), sampleBuffer, phasor, 1);
+	var recording = BufWr.ar(RHPF.ar(SoundIn.ar(audioInput), ~inputHPFfrequency), sampleBuffer, phasor, 1);
 
 	Out.kr(positionBusOutput, phasor);
 
@@ -109,7 +110,12 @@ SynthDef("Trigger_Time_Reset_Impulses", {arg outputBus;
 
 }).add;
 
-~controlRowLedDefaultValues = [7, 3, 7, 3, 7, 3, 7, 3, 0, 3, 0, 0, 0, 3, 0, 3];
+switch(~variBright,  1, {
+	~controlRowLedDefaultValues = [7, 3, 7, 3, 7, 3, 7, 3, 0, 3, 0, 0, 0, 3, 0, 3];
+}, 0, {
+	~controlRowLedDefaultValues = [0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 3, 0, 3];
+});
+
 
 s.waitForBoot({
 
