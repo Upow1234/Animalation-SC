@@ -617,7 +617,7 @@ s.waitForBoot({
 					~triggerRecordingSetToClear[sampleNumber] = 0;
 					~triggerRecordingStatusIndicator[sampleNumber] = 0;
 
-					~gridLeds[13 + (ledOffsets[sampleNumber] * 16)] = 0;
+					~gridLeds[13 + (ledOffsets[sampleNumber] * 16)] = 3;
 					~updateGridLeds.value;
 
 					post("Trigger Recorder" + sampleNumber + "released from PreSet State");
@@ -634,7 +634,7 @@ s.waitForBoot({
 
 					~triggerRecordingStatusIndicator[sampleNumber] = 0;
 
-					~gridLeds[13 + (ledOffsets[sampleNumber] * 16)] = 0;
+					~gridLeds[13 + (ledOffsets[sampleNumber] * 16)] = 3;
 					~updateGridLeds.value;
 
 					postln("Stopping Recording of Sample" + sampleNumber + "triggers");
