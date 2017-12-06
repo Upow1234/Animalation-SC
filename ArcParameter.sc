@@ -46,34 +46,34 @@ ArcParameter {
 		(name + " = " + value).postln;
 
 		^(name + " = " + value);
-		}
+	}
 
 
-		sendChange {
+	sendChange { //should this be a switch? can't be because of > check
 
-			if(iterations == -1, {
-				destination.value(value);
+		if(iterations == -1, {
+			destination.value(value);
+		});
+
+		if(iterations == 0, {
+			destination.set(argument, value);
+		});
+
+		if(iterations > 0, {
+			for(0, iterations, { arg i;
+				destination[i].set(argument, value);
 			});
-
-			if(iterations == 0, {
-				destination.set(argument, value);
-			});
-
-			if(iterations > 0, {
-				for(0, iterations, { arg i;
-					destination[i].set(argument, value);
-				});
-			});
-
-		}
-
-		arcLedValue {
-
-			^LinLin.kr(value, minimum, maximum, 0, 63);
-
-		}
-
+		});
 
 	}
+
+	arcLedValue {
+
+		^LinLin.kr(value, minimum, maximum, 0, 63);
+
+	}
+
+
+}
 
 
