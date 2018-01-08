@@ -1,3 +1,4 @@
+s.boot;
 (
 //*************************************************\\
 
@@ -12,10 +13,12 @@
 // audio inputs and outputs start counting from 0 (input 1 on your interface is 0, input 2 is 1 etc.)
 
 ~audioInput = 0;
+~audioOutput = [0, 1]; //audio output is set to stereo output on channels one and two by default.
+//for a mono output, set "~audioOutput = 0;"
+//zero is channel one, one is channel two etc.
 ~inputHPFfrequency = 100; //sets frequency of HPF on input
 
 ~maxRecordingLength = 120; // the maximum number of seconds you can record one sample
-~audioOutput = [0, 1]; // set for stereo output. if you want mono output, format without [ ] brackets ex. ~audioOutput = 0;
 
 ~maxEnvelopeVolume = 1; // set this value between 0 and 1 to allow more headroom for high resonance sweeps and lots of samples. you can compensate for a lower volume by turning up the output on your audio interface
 
@@ -588,7 +591,7 @@ if(~arcDevicePort.notNil, {
 //end functions used by grid
 
 
-s.waitForBoot({ //needs to have s.makeBundles with s.sync
+s.waitForBoot({
 
 	s.makeBundle(nil, {
 		~grid128.usePort(~gridDevicePort);
@@ -719,7 +722,7 @@ s.waitForBoot({ //needs to have s.makeBundles with s.sync
 
 		}).add;
 
-		SynthDef.new("Sample_Playback_Synth", { arg rate, sampleBuffer, startValue, lengthValue, restartPhasor = 0, cutoff = 20000, resonance = 1, fmSpeed = 0, fmDepth = 0, loopStart = 0, loopLength = 1, ledPhasorOutput, position = 0, direction = 1, volume, clickStopTrigger, maxEnvelopeVolume;
+		SynthDef.new("Sample_Playback_Synth", { arg rate, sampleBuffer, startValue, lengthValue, restartPhasor = 0, cutoff = 20000, resonance = 1, fmSpeed = 0, fmDepth = 0, loopStart = 0, loopLength = 1, ledPhasorOutput, position = 0, direction = 1, volume, clickStopTrigger, maxEnvelopeVolume, out;
 
 			var startLoopPosition = startValue + (lengthValue * loopStart);
 
@@ -770,7 +773,7 @@ s.waitForBoot({ //needs to have s.makeBundles with s.sync
 
 		for(0, 3, {arg i;
 
-			~playbackSynth[i] = Synth("Sample_Playback_Synth", [\rate, 0, \sampleBuffer, ~sampleStorageBuffer[i], \startValue, ~currentPlaybackStart[i], \restartPhasor, ~playbackPhasorNewPositionTrigger[i], \ledPhasorOutput, ~playRowLedBus[i], \clickStopTrigger, ~clickStopTriggerBus[i], \volume, ~volumeDefault, \maxEnvelopeVolume, ~maxEnvelopeVolume]);
+			~playbackSynth[i] = Synth("Sample_Playback_Synth", [\rate, 0, \sampleBuffer, ~sampleStorageBuffer[i], \startValue, ~currentPlaybackStart[i], \restartPhasor, ~playbackPhasorNewPositionTrigger[i], \ledPhasorOutput, ~playRowLedBus[i], \clickStopTrigger, ~clickStopTriggerBus[i], \volume, ~volumeDefault, \maxEnvelopeVolume, ~maxEnvelopeVolume]); //, \out, i]);
 
 		});
 		s.sync;
@@ -903,9 +906,7 @@ s.waitForBoot({ //needs to have s.makeBundles with s.sync
 		~playRowLedMonitor.play;
 	};
 
-
+	~initAnimalation.value;
 }); //end wait for boot
 
 )
-~initAnimalation.value
-
