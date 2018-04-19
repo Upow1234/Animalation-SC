@@ -19,7 +19,7 @@ ArcParameter {
 
 
 	currentValue {
-		(name + " = " + value).postln;
+		//(name + " = " + value).postln;
 
 		^value;
 	}
@@ -45,35 +45,60 @@ ArcParameter {
 
 		(name + " = " + value).postln;
 
-		^(name + " = " + value);
-		}
+		if(iterations == -1, {
+			destination.value(value);
+		});
 
+		if(iterations == 0, {
+			destination.set(argument, value);
+		});
 
-		sendChange {
-
-			if(iterations == -1, {
-				destination.value(value);
+		if(iterations > 0, {
+			for(0, iterations, { arg i;
+				destination[i].set(argument, value);
 			});
+		});
 
-			if(iterations == 0, {
-				destination.set(argument, value);
+		//^(name + " = " + value);
+	}
+
+
+	sendChange { //this is now in the change method so can probably be depreciated
+
+		if(iterations == -1, {
+			destination.value(value);
+		});
+
+		if(iterations == 0, {
+			destination.set(argument, value);
+		});
+
+		if(iterations > 0, {
+			for(0, iterations, { arg i;
+				destination[i].set(argument, value);
 			});
-
-			if(iterations > 0, {
-				for(0, iterations, { arg i;
-					destination[i].set(argument, value);
-				});
-			});
-
-		}
-
-		arcLedValue {
-
-			^LinLin.kr(value, minimum, maximum, 0, 63);
-
-		}
-
+		});
 
 	}
+
+	arcLedValue {
+
+		^LinLin.kr(value, minimum, maximum, 0, 63);
+
+	}
+
+	arcLedValueFine { arg max = 15;
+		var fineLed, result;
+		fineLed = (LinLin.kr(value, minimum, maximum, 0, 63)) % 1;
+		result = LinLin.kr(fineLed, 0, 1, 0, max);
+
+		^result;
+	}
+
+	displayName {
+		name.postln;
+	}
+
+}
 
 

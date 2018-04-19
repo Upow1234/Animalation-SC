@@ -51,8 +51,13 @@ or simply press control-shift-l (l as in larry).
 Basic Usage:  
   
 First the basic commands you will need for SuperCollider.  
+
+First you must start the sound server. This can be done in one of three ways:
+1. Press Ctrl(Cmd)+Enter on the first line in the program, where is says "s.boot;"
+2. Press Ctrl(Cmd)+b
+3. Go to Server > Boot Server
   
-Click anywhere in the text of the code and press control-enter. This will start Animalation.  
+Click anywhere below the first line of code and press control-enter. This will start Animalation.  
 If you want to clear what is in the post window at any time, the command is control-shift-p.  
 Click control-. (that's the control key and the period key) to completely stop Animaltion.  
 All samples will be lost when control-. is pressed.  
